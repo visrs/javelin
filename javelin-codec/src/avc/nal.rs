@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, convert::TryFrom};
 use bytes::{Bytes, BytesMut, IntoBuf};
 use crate::{Error, Result};
 
@@ -24,7 +24,9 @@ pub enum UnitType {
     CodedSliceExtension = 20,
 }
 
-impl UnitType {
+impl TryFrom<u8> for UnitType {
+    type Error = Error;
+
     fn try_from(value: u8) -> Result<Self> {
         let val = match value {
             1 => UnitType::NonIdrPicture,
@@ -65,8 +67,10 @@ pub struct Unit {
     pub data: Bytes, // Raw Byte Sequence Payload (RBSP)
 }
 
-impl Unit {
-    pub fn try_from_bytes(bytes: Bytes) -> Result<Self> {
+impl TryFrom<Bytes> for Unit {
+    type Error = Error;
+
+    fn try_from(bytes: Bytes) -> Result<Self> {
         use bytes::Buf;
 
         let mut buf = bytes.into_buf();

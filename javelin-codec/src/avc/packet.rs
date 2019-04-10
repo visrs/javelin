@@ -1,5 +1,9 @@
+use std::{
+    convert::TryFrom,
+    io::Cursor,
+};
 use log::debug;
-use bytes::{Bytes, Buf, IntoBuf};
+use bytes::{Bytes, Buf};
 use super::{
     dcr::DecoderConfigurationRecord,
     bitstream::Bitstream,
@@ -57,17 +61,16 @@ impl From<u8> for FrameType {
 }
 
 
+// Bits | Name
+// ---- | ----
+// 4    | Frame Type
+// 4    | Codec ID
+// 8    | Packet Type
+// 24   | Composition Time
+// var  | [Decoder Configuration Record](struct.DecoderConfigurationRecord.html)
+// var  | [NALU](../nalu/struct.Unit.html)
+
 /// AVC encoded byte chunk
-///
-/// Bits | Name
-/// ---- | ----
-/// 4    | Frame Type
-/// 4    | Codec ID
-/// 8    | Packet Type
-/// 24   | Composition Time
-/// var  | [Decoder Configuration Record](struct.DecoderConfigurationRecord.html)
-/// var  | [NALU](../nalu/struct.Unit.html)
-///
 #[derive(Debug)]
 pub struct Packet {
     frame_type: FrameType,
@@ -78,38 +81,6 @@ pub struct Packet {
 }
 
 impl Packet {
-    pub fn try_from_buf<B>(bytes: B, timestamp: u64, shared: &SharedState) -> Result<Self>
-        where B: IntoBuf
-    {
-        let mut buf = bytes.into_buf();
-
-        let tmp = buf.get_u8();
-        let frame_type = FrameType::from(tmp >> 4);
-        let codec_id = tmp & 0x0F;
-        assert!(codec_id == 7);
-
-        let tmp = buf.get_u32_be();
-        let packet_type = PacketType::from((tmp >> 24) as u8);
-        let composition_time = tmp & 0x00_FF_FF_FF;
-
-        if packet_type == PacketType::SequenceHeader {
-            debug!("Received video sequence header");
-            let mut dcr = shared.dcr.write();
-            *dcr = Some(DecoderConfigurationRecord::try_from_buf(&mut buf)?);
-        }
-
-        let dcr = shared.dcr.read().clone().ok_or(Error::DecoderConfigurationRecordMissing)?;
-        let nal_units = Bitstream::try_from_buf(buf, dcr.clone())?;
-
-        Ok(Self {
-            frame_type,
-            packet_type,
-            composition_time,
-            nal_units,
-            timestamp,
-        })
-    }
-
     pub fn try_as_bytes(&self) -> Result<Bytes> {
         self.nal_units.try_as_bytes()
     }
@@ -128,5 +99,39 @@ impl Packet {
 
     pub fn timestamp(&self) -> u64 {
         self.timestamp
+    }
+}
+
+impl TryFrom<(Bytes, u64, &SharedState)> for Packet {
+    type Error = Error;
+
+    fn try_from((bytes, timestamp, shared) : (Bytes, u64, &SharedState)) -> Result<Self> {
+        let mut buf = Cursor::new(bytes);
+
+        let tmp = buf.get_u8();
+        let frame_type = FrameType::from(tmp >> 4);
+        let codec_id = tmp & 0x0F;
+        assert!(codec_id == 7);
+
+        let tmp = buf.get_u32_be();
+        let packet_type = PacketType::from((tmp >> 24) as u8);
+        let composition_time = tmp & 0x00_FF_FF_FF;
+
+        if packet_type == PacketType::SequenceHeader {
+            debug!("Received video sequence header");
+            let mut dcr = shared.dcr.write();
+            *dcr = Some(DecoderConfigurationRecord::try_from(&mut buf)?);
+        }
+
+        let dcr = shared.dcr.read().clone().ok_or(Error::DecoderConfigurationRecordMissing)?;
+        let nal_units = Bitstream::try_from((buf, dcr.clone()))?;
+
+        Ok(Self {
+            frame_type,
+            packet_type,
+            composition_time,
+            nal_units,
+            timestamp,
+        })
     }
 }

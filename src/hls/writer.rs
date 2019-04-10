@@ -1,4 +1,8 @@
-use std::{path::PathBuf, fs};
+use std::{
+    convert::TryFrom,
+    path::PathBuf,
+    fs
+};
 use log::{debug, error, warn};
 use futures::try_ready;
 use tokio::prelude::*;
@@ -64,7 +68,7 @@ impl Writer {
     {
         let timestamp: u64 = timestamp.into();
 
-        let packet = avc::Packet::try_from_buf(bytes, timestamp, &self.shared_state)?;
+        let packet = avc::Packet::try_from((bytes, timestamp, &self.shared_state))?;
 
         if packet.is_sequence_header() {
             return Ok(());

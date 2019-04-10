@@ -1,8 +1,7 @@
-mod nal;
 mod packet;
-mod bitstream;
 
-
+pub mod nal;
+pub mod bitstream;
 pub mod dcr;
 
 
