@@ -1,11 +1,12 @@
 #![warn(clippy::all)]
+#![allow(dead_code)] // FIXME: remove this
+#![allow(unused_imports)] // FIXME: remove this
 
 mod error;
 mod shared;
 mod config;
 mod media;
 mod rtmp;
-mod args;
 
 #[cfg(feature = "hls")]
 mod hls;

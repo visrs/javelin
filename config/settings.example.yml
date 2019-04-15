@@ -1,0 +1,26 @@
+# Example configuration file
+
+# TLS specific configuration
+tls:
+  enabled: false
+  cert_path: "/path/to/certificate.p12"
+  cert_password: "mysecretpassword"
+
+# HTTP Live Streaming configuration
+hls:
+  enabled: true
+  root_dir: "./tmp/stream"
+
+# Webserver and API configuration
+web:
+  enabled: true
+  bind: "0.0.0.0"
+  port: 8080
+
+rtmp:
+  bind: "0.0.0.0"
+  port: 1935
+  republish_action: "replace"
+  permitted_stream_keys:
+    - "123456"
+    - "000000"

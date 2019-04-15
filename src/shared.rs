@@ -9,7 +9,7 @@ use crate::{
         Client,
         peer,
     },
-    config::Config,
+    config::Settings,
 };
 #[cfg(feature = "hls")]
 use crate::hls;
@@ -17,7 +17,7 @@ use crate::hls;
 
 #[derive(Clone)]
 pub struct Shared {
-    pub config: Arc<RwLock<Config>>,
+    pub config: Arc<RwLock<Settings>>,
     pub peers: Arc<RwLock<HashMap<u64, peer::Sender>>>,
     pub clients: Arc<Mutex<HashMap<u64, Client>>>,
     pub streams: Arc<RwLock<HashMap<String, Channel>>>,
@@ -30,8 +30,11 @@ pub struct Shared {
 
 impl Shared {
     pub fn new() -> Self {
+        let settings = Settings::new().unwrap();
+        println!("{:#?}", settings);
+
         Self {
-            config: Arc::new(RwLock::new(Config::new())),
+            config: Arc::new(RwLock::new(settings)),
             peers: Arc::new(RwLock::new(HashMap::new())),
             clients: Arc::new(Mutex::new(HashMap::new())),
             streams: Arc::new(RwLock::new(HashMap::new())),

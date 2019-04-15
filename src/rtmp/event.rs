@@ -16,7 +16,7 @@ use rml_rtmp::{
 };
 use crate::{
     error::{Error, Result},
-    config::RepublishAction,
+    config::models::RepublishAction,
     shared::Shared,
     media::{Media, Channel},
 };
@@ -156,7 +156,7 @@ impl Handler {
 
         {
             let config = self.shared.config.read();
-            if stream_key.is_empty() || !config.permitted_stream_keys.contains(&stream_key) {
+            if stream_key.is_empty() || !config.rtmp.permitted_stream_keys.contains(&stream_key) {
                 return Err(Error::SessionError(format!("Stream key '{}' is not permitted", stream_key)));
             }
         }
@@ -168,7 +168,7 @@ impl Handler {
             let config = self.shared.config.read();
             if let Some(stream) = streams.get_mut(&app_name) {
                 if let Some(publisher) = &stream.publisher {
-                    match config.republish_action {
+                    match config.rtmp.republish_action {
                         RepublishAction::Replace => {
                             info!("Another client is already publishing to this app, removing client");
                             let peers = self.shared.peers.write();

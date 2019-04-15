@@ -1,4 +1,6 @@
 use std::{io, result};
+
+use config::ConfigError;
 use rml_rtmp::sessions::ServerSessionError as RtmpSessionError;
 #[cfg(feature = "hls")]
 use mpeg2ts::Error as TransportStreamError;
@@ -16,6 +18,7 @@ pub enum Error {
     HandshakeFailed,
     RequestError,
     SessionError(String),
+    ConfigError(ConfigError),
     #[cfg(feature = "hls")]
     TransportStreamError(TransportStreamError),
     #[cfg(feature = "hls")]
@@ -31,6 +34,12 @@ impl From<io::Error> for Error {
 impl From<RtmpSessionError> for Error {
     fn from(err: RtmpSessionError) -> Self {
         Error::RtmpSessionError(err)
+    }
+}
+
+impl From<ConfigError> for Error {
+    fn from(err: ConfigError) -> Self {
+        Error::ConfigError(err)
     }
 }
 

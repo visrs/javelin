@@ -34,7 +34,7 @@ pub struct Server {
 
 impl Server {
     pub fn new(shared: Shared) -> Self {
-        let addr = shared.config.read().addr;
+        let addr = shared.config.read().rtmp.addr;
         let listener = TcpListener::bind(&addr).expect("Failed to bind TCP listener");
 
         info!("Starting up Javelin RTMP server on {}", addr);
@@ -97,30 +97,30 @@ fn spawner(id: u64, stream: TcpStream, shared: Shared) {
 
 #[cfg(feature = "tls")]
 fn spawner(id: u64, stream: TcpStream, shared: Shared) {
-    let config = shared.config.read().clone();
+    // let config = shared.config.read().clone();
 
-    stream.set_keepalive(Some(Duration::from_secs(30)))
-        .expect("Failed to set TCP keepalive");
+    // stream.set_keepalive(Some(Duration::from_secs(30)))
+    //     .expect("Failed to set TCP keepalive");
 
-    if config.tls.enabled {
-        let tls_acceptor = {
-            let p12 = config.tls.read_cert().unwrap();
-            let password = config.tls.cert_password;
-            let cert = native_tls::Identity::from_pkcs12(&p12, &password).unwrap();
-            TlsAcceptor::from(native_tls::TlsAcceptor::builder(cert).build().unwrap())
-        };
+    // if config.tls.enabled {
+    //     let tls_acceptor = {
+    //         let p12 = config.tls.read_cert().unwrap();
+    //         let password = config.tls.cert_password;
+    //         let cert = native_tls::Identity::from_pkcs12(&p12, &password).unwrap();
+    //         TlsAcceptor::from(native_tls::TlsAcceptor::builder(cert).build().unwrap())
+    //     };
 
-        let tls_accept = tls_acceptor.accept(stream)
-            .and_then(move |tls_stream| {
-                process(id, tls_stream, &shared);
-                Ok(())
-            })
-            .map_err(|err| {
-                error!("TLS error: {:?}", err);
-            });
+    //     let tls_accept = tls_acceptor.accept(stream)
+    //         .and_then(move |tls_stream| {
+    //             process(id, tls_stream, &shared);
+    //             Ok(())
+    //         })
+    //         .map_err(|err| {
+    //             error!("TLS error: {:?}", err);
+    //         });
 
-        tokio::spawn(tls_accept);
-    } else {
+    //     tokio::spawn(tls_accept);
+    // } else {
         process(id, stream, &shared);
-    }
+    // }
 }
