@@ -49,11 +49,19 @@ def docker_push(image_name, versions)
   end
 end
 
-version = TOML.load_file("Cargo.toml").dig("package", "version")
+def versions
+  @versions ||=
+    if ARGV.first == "--release"
+      version = TOML.load_file("Cargo.toml").dig("package", "version")
+      ["latest", *validate_version(version)]
+    else
+      ["develop"]
+    end
+end
+
 image_name = "registry.gitlab.com/valeth/javelin"
 
 begin
-  versions = ["latest", *validate_version(version)]
   docker_build(image_name, versions)
   docker_push(image_name, versions)
 rescue InvalidVersion, DockerError => e
