@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::HashMap,
     net::SocketAddr,
     str::FromStr,
     result,
@@ -11,7 +11,7 @@ use std::{
     io::Read,
     env,
 };
-use log::debug;
+use log::{debug, error};
 use clap::ArgMatches;
 use crate::{args, Error};
 #[cfg(feature = "tls")]
@@ -119,10 +119,12 @@ impl WebConfig {
 }
 
 
+type KeyRegistry = HashMap<String, String>;
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub addr: SocketAddr,
-    pub permitted_stream_keys: HashSet<String>,
+    pub permitted_stream_keys: KeyRegistry,
     pub republish_action: RepublishAction,
     #[cfg(feature = "tls")]
     pub tls: TlsConfig,
@@ -164,27 +166,36 @@ impl Config {
 
 /// Loads all stream keys from the configuration file and then from command line arguments.
 /// Every key is only included once, even if they are specified multiple times.
-fn load_permitted_stream_keys(args: &ArgMatches) -> HashSet<String> {
+fn load_permitted_stream_keys(args: &ArgMatches) -> KeyRegistry {
     let config_dir = args.value_of("config_dir")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("./config"));
     let keys_file = config_dir.join("permitted_stream_keys.yml");
-    let mut permitted_stream_keys: HashSet<String> = HashSet::new();
+    let mut permitted_stream_keys: KeyRegistry = HashMap::new();
 
     if keys_file.exists() {
         debug!("Loading permitted keys from configuration file");
         if let Ok(file) = std::fs::File::open(&keys_file) {
-            let keys: HashSet<String> = serde_yaml::from_reader(file)
+            let keys: KeyRegistry = serde_yaml::from_reader(file)
                 .expect("Failed to read keys from config file");
             permitted_stream_keys.extend(keys);
         }
     }
 
-    let keys: HashSet<String> = args
+    let keys = args
         .values_of("permitted_stream_keys")
         .unwrap_or_default()
-        .map(str::to_string)
-        .collect();
+        .fold(HashMap::new(), |mut acc, elem| {
+            let tmp = elem.split(':').collect::<Vec<_>>();
+            match (tmp.first(), tmp.last()) {
+                (Some(app_name), Some(stream_key)) => {
+                    acc.insert(app_name.to_string(), stream_key.to_string());
+                },
+                // TODO: handle this as error
+                _ => error!("Invalid stream key provided, skipping")
+            }
+            acc
+        });
 
     permitted_stream_keys.extend(keys);
 
