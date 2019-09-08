@@ -133,6 +133,24 @@ impl Handler {
         Ok(())
     }
 
+    fn authenticate_user(&self, app_name: &str, stream_key: &str) -> Result<()> {
+        let config = self.shared.config.read();
+
+        if stream_key.is_empty() {
+            return Err(Error::SessionError("Stream key can not be empty".into()));
+        }
+
+        match config.permitted_stream_keys.get(app_name) {
+            Some(k) if stream_key != k => {
+                Err(Error::SessionError(format!("Stream key '{}' is not permitted for application '{}'", stream_key, app_name)))
+            },
+            None => {
+                Err(Error::SessionError(format!("There is no application registered with the name '{}'", app_name)))
+            },
+            _ => Ok(())
+        }
+    }
+
     fn connection_requested(&mut self, request_id: u32, app_name: &str) -> Result<()> {
         info!("Connection request from client {} for app '{}'", self.peer_id, app_name);
 
@@ -154,14 +172,9 @@ impl Handler {
     fn publish_requested(&mut self, request_id: u32, app_name: String, stream_key: String) -> Result<()> {
         info!("Client {} requested publishing to app '{}' using stream key {}", self.peer_id, app_name, stream_key);
 
-        {
-            let config = self.shared.config.read();
-            if stream_key.is_empty() || !config.permitted_stream_keys.contains(&stream_key) {
-                return Err(Error::SessionError(format!("Stream key '{}' is not permitted", stream_key)));
-            }
-        }
+        self.authenticate_user(&app_name, &stream_key)?;
 
-        debug!("Stream key '{}' permitted", stream_key);
+        info!("Access granted to {} for publishing to application '{}'", self.peer_id, app_name);
 
         {
             let mut streams = self.shared.streams.write();
