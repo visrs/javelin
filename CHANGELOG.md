@@ -8,7 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-*No changes yet.*
+### Changed
+- The `permit-stream-key` argument not takes a key-value pair like
+  `appname:streamkey` instead of just `streamkey`.
+
+### Fixed
+- Stream keys are not bound to one single application
 
 ---
 

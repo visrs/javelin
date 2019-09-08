@@ -2,6 +2,9 @@
 
 # Javelin RTMP Server
 
+> Please be aware that this software is still under development.
+> There could be breaking changes before version 1.0.
+
 Streaming server written in Rust.
 
 Supported sources:
@@ -11,7 +14,6 @@ Supported outputs:
 - RTMP
 - HLS (H.264 + AAC)
 
-
 ## How to install and run
 
 ### Via Cargo
@@ -19,7 +21,7 @@ Supported outputs:
 ```sh
 cargo install javelin
 # Make sure your $CARGO_HOME/bin is in your $PATH
-javelin --permit-stream-key="mysecretstreamkey"
+javelin --permit-stream-key="username:mysecretstreamkey"
 ```
 
 ### Via Docker
@@ -29,7 +31,7 @@ docker pull registry.gitlab.com/valeth/javelin:latest
 docker run --tty -p 1935:1935 \
     registry.gitlab.com/valeth/javelin:latest \
     --hls-root=/tmp/streamout \
-    --permit-stream-key=123456
+    --permit-stream-key="username:123456"
 ```
 
 > Try `javelin --help` for more command line options.
