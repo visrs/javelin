@@ -165,11 +165,12 @@ impl<S> Future for Peer<S>
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        // FIXME: potential starvation of socket stream?
         while let Async::Ready(Some(msg)) = self.receiver.poll().unwrap() {
             match msg {
                 Message::Raw(val) => {
-                    self.bytes_stream.get_mut().fill_write_buffer(&val);
+                    self.bytes_stream.get_mut()
+                        .send(val).poll()
+                        .expect("BytesStream send should be infallible");
                 },
                 Message::Disconnect => {
                     self.disconnecting = true;
@@ -177,8 +178,6 @@ impl<S> Future for Peer<S>
                 }
             }
         }
-
-        let _ = self.bytes_stream.get_mut().poll_flush()?;
 
         match try_ready!(self.bytes_stream.poll()) {
             Some(data) => {

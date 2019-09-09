@@ -2,7 +2,7 @@ use tokio::{
     prelude::*,
     io,
 };
-use futures::try_ready;
+use futures::{try_ready, StartSend};
 use bytes::{Bytes, BytesMut, BufMut};
 use crate::error::Error;
 
@@ -25,21 +25,6 @@ impl<S> BytesStream<S>
             buf_in: BytesMut::new(),
             buf_out: BytesMut::new(),
         }
-    }
-
-    pub fn fill_write_buffer(&mut self, data: &[u8]) {
-        self.buf_out.reserve(data.len());
-        self.buf_out.put(data);
-    }
-
-    pub fn poll_flush(&mut self) -> Poll<(), io::Error> {
-        while !self.buf_out.is_empty() {
-            let bytes_written = try_ready!(self.socket.poll_write(&self.buf_out));
-            assert!(bytes_written > 0);
-            let _ = self.buf_out.split_to(bytes_written);
-        }
-
-        Ok(Async::Ready(()))
     }
 
     fn fill_read_buffer(&mut self) -> Poll<(), io::Error> {
@@ -71,6 +56,36 @@ impl<S> Stream for BytesStream<S>
         if is_socket_closed {
             // Stream is finished
             Ok(Async::Ready(None))
+        } else {
+            Ok(Async::NotReady)
+        }
+    }
+}
+
+impl<S> Sink for BytesStream<S>
+    where S: AsyncWrite + AsyncRead
+{
+    type SinkItem = Bytes;
+    type SinkError = Error;
+
+    fn start_send(&mut self, item: Self::SinkItem) -> StartSend<Self::SinkItem, Self::SinkError> {
+        // This could potentially panic if the buffer reaches `usize::MAX`.
+        self.buf_out.reserve(item.len());
+        self.buf_out.put(item);
+        Ok(AsyncSink::Ready)
+    }
+
+    fn poll_complete(&mut self) -> Poll<(), Self::SinkError> {
+        let bytes_written = try_ready!(self.socket.poll_write(&self.buf_out));
+
+        if bytes_written == 0 {
+            return Err(Error::from("Read 0 bytes while socket was ready"));
+        }
+
+        let _ = self.buf_out.split_to(bytes_written);
+
+        if self.buf_out.is_empty() {
+            Ok(Async::Ready(()))
         } else {
             Ok(Async::NotReady)
         }
