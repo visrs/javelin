@@ -1,4 +1,4 @@
-use std::{fs, path::Path};
+use std::{io::Result, fs, path::Path};
 use log::{debug, error, info};
 use tokio::prelude::*;
 use futures::{
@@ -8,7 +8,6 @@ use futures::{
 use crate::{
     media,
     shared::Shared,
-    Result,
 };
 use super::writer::Writer;
 

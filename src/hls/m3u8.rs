@@ -1,4 +1,5 @@
 use std::{
+    io::Result,
     fs,
     path::PathBuf,
     time::Duration,
@@ -9,10 +10,7 @@ use log::error;
 use m3u8_rs::playlist::{MediaPlaylist, MediaSegment};
 use tempfile::NamedTempFile;
 use super::file_cleaner;
-use crate::{
-    error::Result,
-    shared::Shared
-};
+use crate::shared::Shared;
 
 
 pub struct Playlist {

@@ -1,4 +1,5 @@
 use std::{
+    io,
     collections::HashMap,
     net::SocketAddr,
     str::FromStr,
@@ -13,9 +14,25 @@ use std::{
 };
 use log::{debug, error};
 use clap::ArgMatches;
-use crate::{args, Error};
-#[cfg(feature = "tls")]
-use crate::error::Result;
+use snafu::{Snafu, ResultExt};
+use crate::args;
+
+
+#[derive(Debug, Snafu)]
+pub enum Error {
+    #[snafu(display("Failed to parse {}: {}", what, message))]
+    ParseError { what: String, message: String },
+
+    #[cfg(feature = "tls")]
+    #[snafu(display("Could not find TLS certificate at {}", path.display()))]
+    NoCertificateFound { source: io::Error, path: PathBuf },
+
+    #[cfg(feature = "tls")]
+    #[snafu(display("Failed to read file {}: {}", path.display(), source))]
+    ReadError { source: io::Error, path: PathBuf }
+}
+
+type Result<T, E = Error> = std::result::Result<T, E>;
 
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -31,7 +48,12 @@ impl FromStr for RepublishAction {
         let action = match s {
             "replace" => RepublishAction::Replace,
             "deny" => RepublishAction::Deny,
-            _ => return Err(Error::from(format!("Failed to parse RepublishAction, '{}' not valid", s)))
+            _ => {
+                return Err(Error::ParseError {
+                    what: "RepublishAction".into(),
+                    message: format!("'{}' not valid", s)
+                });
+            }
         };
 
         Ok(action)
@@ -69,9 +91,9 @@ impl TlsConfig {
 
     pub fn read_cert(&self) -> Result<Vec<u8>> {
         let path = self.cert_path.clone().expect("");
-        let mut file = File::open(path)?;
+        let mut file = File::open(path.clone()).context(NoCertificateFound { path: path.clone() })?;
         let mut buf = Vec::with_capacity(2500);
-        file.read_to_end(&mut buf)?;
+        file.read_to_end(&mut buf).context(ReadError { path: path.clone() })?;
         Ok(buf)
     }
 }

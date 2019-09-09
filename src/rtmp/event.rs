@@ -7,6 +7,7 @@ use::log::{debug, error, info};
 use futures::{sync::oneshot, Future};
 use rml_rtmp::{
     sessions::{
+        ServerSessionError,
         ServerSessionResult,
         ServerSessionEvent as Event,
         StreamMetadata,
@@ -14,8 +15,8 @@ use rml_rtmp::{
     chunk_io::Packet,
     time::RtmpTimestamp
 };
+use snafu::{ensure, Snafu, ResultExt, OptionExt};
 use crate::{
-    error::{Error, Result},
     config::RepublishAction,
     shared::Shared,
     media::{Media, Channel},
@@ -25,9 +26,49 @@ use crate::{
     media,
 };
 use super::{
-    Client,
+    error::Error as RtmpError,
+    client::{self, Client},
     peer,
 };
+
+
+#[derive(Debug, Snafu)]
+pub enum Error {
+    #[snafu(display("Stream key can not be empty"))]
+    EmptyStreamKey,
+
+    #[snafu(display("Stream key '{}' is not permitted for application '{}'", stream_key, app_name))]
+    UnpermittedStreamKey { stream_key: String, app_name: String },
+
+    #[snafu(display("There is no application registered with the name '{}'", app_name))]
+    UnknownApplication { app_name: String },
+
+    #[snafu(display("Application name can not be empty"))]
+    EmptyApplicationName,
+
+    #[snafu(display("App '{}' is already being published to", app_name))]
+    RepublishDenied { app_name: String },
+
+    #[snafu(display("Invalid application '{}'", app_name))]
+    InvalidApplication { app_name: String },
+
+    #[snafu(display("Failed to build package: {}", source))]
+    BuildPackageFailed {
+        #[snafu(source(from(ServerSessionError, RtmpError::from)))]
+        source: RtmpError,
+    },
+
+    #[snafu(display("Session error: {}", source))]
+    InvalidInput {
+        #[snafu(source(from(ServerSessionError, RtmpError::from)))]
+        source: RtmpError,
+    },
+
+    #[snafu(display("Event: {}", source))]
+    ClientError { source: client::Error },
+}
+
+type Result<T> = std::result::Result<T, Error>;
 
 
 #[derive(Debug)]
@@ -50,7 +91,7 @@ impl Handler {
     pub fn new(peer_id: u64, shared: Shared) -> Result<Self> {
         let results = {
             let mut clients = shared.clients.lock();
-            let (client, results) = Client::new(peer_id, shared.clone())?;
+            let (client, results) = Client::new(peer_id, shared.clone()).context(ClientError)?;
             clients.insert(peer_id, client);
             results
         };
@@ -72,7 +113,7 @@ impl Handler {
         let results = {
             let mut clients = self.shared.clients.lock();
             let client = clients.get_mut(&self.peer_id).unwrap();
-            client.session.handle_input(bytes)?
+            client.session.handle_input(bytes).context(InvalidInput)?
         };
 
         self.handle_server_session_results(results)?;
@@ -136,16 +177,14 @@ impl Handler {
     fn authenticate_user(&self, app_name: &str, stream_key: &str) -> Result<()> {
         let config = self.shared.config.read();
 
-        if stream_key.is_empty() {
-            return Err(Error::SessionError("Stream key can not be empty".into()));
-        }
+        ensure!(!stream_key.is_empty(), EmptyStreamKey);
 
         match config.permitted_stream_keys.get(app_name) {
             Some(k) if stream_key != k => {
-                Err(Error::SessionError(format!("Stream key '{}' is not permitted for application '{}'", stream_key, app_name)))
+                Err(Error::UnpermittedStreamKey { app_name: app_name.to_string(), stream_key: stream_key.to_string() })
             },
             None => {
-                Err(Error::SessionError(format!("There is no application registered with the name '{}'", app_name)))
+                Err(Error::UnknownApplication { app_name: app_name.to_string() })
             },
             _ => Ok(())
         }
@@ -154,14 +193,12 @@ impl Handler {
     fn connection_requested(&mut self, request_id: u32, app_name: &str) -> Result<()> {
         info!("Connection request from client {} for app '{}'", self.peer_id, app_name);
 
-        if app_name.is_empty() {
-            return Err(Error::from("Application name can not be empty"));
-        }
+        ensure!(!app_name.is_empty(), EmptyApplicationName);
 
         let results = {
             let mut clients = self.shared.clients.lock();
             let client = clients.get_mut(&self.peer_id).unwrap();
-            client.accept_request(request_id)?
+            client.accept_request(request_id).context(ClientError)?
         };
 
         self.handle_server_session_results(results)?;
@@ -190,7 +227,7 @@ impl Handler {
                             stream.unpublish();
                         },
                         RepublishAction::Deny => {
-                            return Err(Error::SessionError(format!("App '{}' is already being published to", app_name)));
+                            return Err(Error::RepublishDenied { app_name });
                         }
                     }
                 }
@@ -200,13 +237,13 @@ impl Handler {
         #[cfg(feature = "hls")]
         self.register_on_hls_server(app_name.clone());
 
-        let result = {
+        let results = {
             let mut clients = self.shared.clients.lock();
             let client = clients.get_mut(&self.peer_id).unwrap();
             let mut streams = self.shared.streams.write();
             let mut stream = streams.entry(app_name.clone()).or_insert_with(Channel::new);
             client.publish(&mut stream, app_name.clone(), stream_key.clone());
-            client.accept_request(request_id)
+            client.accept_request(request_id).context(ClientError)?
         };
 
         {
@@ -214,13 +251,7 @@ impl Handler {
             app_names.insert(stream_key, app_name);
         }
 
-        match result {
-            Err(why) => {
-                error!("Error while accepting publishing request: {:?}", why);
-                return Err(Error::SessionError("Publish request failed".into()));
-            },
-            Ok(results) => self.handle_server_session_results(results)?
-        }
+        self.handle_server_session_results(results)?;
 
         Ok(())
     }
@@ -257,7 +288,7 @@ impl Handler {
                 client.watch(&mut stream, stream_id, app_name.to_string());
             }
 
-            client.accept_request(request_id)?
+            client.accept_request(request_id).context(ClientError)?
         };
 
         {
@@ -266,20 +297,23 @@ impl Handler {
             let streams = self.shared.streams.read();
 
             if let Some(ref metadata) = streams.get(app_name).unwrap().metadata {
-                let packet = client.session.send_metadata(stream_id, Rc::new(metadata.clone()))
-                    .map_err(|_| Error::SessionError("Failed to send metadata".into()))?;
+                let packet = client.session
+                    .send_metadata(stream_id, Rc::new(metadata.clone()))
+                    .context(BuildPackageFailed)?;
                 self.results.push_back(EventResult::Outbound(self.peer_id, packet));
             }
 
             if let Some(ref v_seq_h) = streams.get(app_name).unwrap().video_seq_header {
-                let packet = client.session.send_video_data(stream_id, v_seq_h.clone(), RtmpTimestamp::new(0), false)
-                    .map_err(|_| Error::SessionError("Failed to send video data".into()))?;
+                let packet = client.session
+                    .send_video_data(stream_id, v_seq_h.clone(), RtmpTimestamp::new(0), false)
+                    .context(BuildPackageFailed)?;
                 self.results.push_back(EventResult::Outbound(self.peer_id, packet));
             }
 
             if let Some(ref a_seq_h) = streams.get(app_name).unwrap().audio_seq_header {
-                let packet = client.session.send_audio_data(stream_id, a_seq_h.clone(), RtmpTimestamp::new(0), false)
-                    .map_err(|_| Error::SessionError("Failed to send audio data".into()))?;
+                let packet = client.session
+                    .send_audio_data(stream_id, a_seq_h.clone(), RtmpTimestamp::new(0), false)
+                    .context(BuildPackageFailed)?;
                 self.results.push_back(EventResult::Outbound(self.peer_id, packet));
             }
         }
@@ -303,7 +337,7 @@ impl Handler {
                 if let Some(watched_stream) = client.watched_stream() {
                     let packet = client.session
                         .send_metadata(watched_stream, Rc::new(metadata.clone()))
-                        .map_err(|_| Error::SessionError("Failed to send metadata".into()))?;
+                        .context(BuildPackageFailed)?;
 
                     self.results.push_back(EventResult::Outbound(self.peer_id, packet));
                 }
@@ -321,7 +355,7 @@ impl Handler {
 
         let app_name = self.shared
             .app_name_from_stream_key(&stream_key)
-            .ok_or_else(|| Error::SessionError("No app for stream key".into()))?;
+            .context(InvalidApplication { app_name: "No app for stream key" })?;
 
         let mut streams = self.shared.streams.write();
         if let Some(stream) = streams.get_mut(&app_name) {
@@ -349,13 +383,17 @@ impl Handler {
                 if let Some(active_stream) = client.watched_stream() {
                     let packet = match &media {
                         Media::AAC(timestamp, bytes) => {
-                            client.session.send_audio_data(active_stream, bytes.clone(), timestamp.clone(), true)?
+                            client.session
+                                .send_audio_data(active_stream, bytes.clone(), timestamp.clone(), true)
+                                .context(BuildPackageFailed)?
                         }
                         Media::H264(timestamp, ref bytes) => {
                             if media.is_keyframe() {
                                 client.received_video_keyframe = true;
                             }
-                            client.session.send_video_data(active_stream, bytes.clone(), timestamp.clone(), true)?
+                            client.session
+                                .send_video_data(active_stream, bytes.clone(), timestamp.clone(), true)
+                                .context(BuildPackageFailed)?
                         },
                     };
 
@@ -382,7 +420,6 @@ impl Handler {
                 .unwrap();
         }
     }
-
 
     #[cfg(feature = "hls")]
     fn send_to_hls_writer(&self, media: Media) {

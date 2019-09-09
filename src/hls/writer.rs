@@ -1,20 +1,40 @@
-use std::{path::PathBuf, fs};
+use std::{io, path::PathBuf, fs};
 use log::{debug, error, warn};
 use futures::try_ready;
 use tokio::prelude::*;
 use bytes::Bytes;
 use chrono::Utc;
-#[cfg(feature = "hls")]
-use javelin_codec::{avc, aac};
+use snafu::{Snafu, ResultExt, ensure};
+use javelin_codec::{self, avc, aac};
 use super::{
-    transport_stream::Buffer as TsBuffer,
+    transport_stream::{
+        self,
+        Buffer as TsBuffer
+    },
     m3u8::Playlist,
 };
 use crate::{
     shared::Shared,
     media::{self, Media},
-    error::{Error, Result},
 };
+
+
+#[derive(Debug, Snafu)]
+pub enum Error {
+    #[snafu(display("Path '{}' exists, but is not a directory", path.display()))]
+    InvalidHlsRoot { path: PathBuf },
+
+    #[snafu(display("Failed to create HLS root directory at '{}'", path.display()))]
+    DirectoryCreationFailed { source: io::Error, path: PathBuf },
+
+    #[snafu(display("Codec: {}", source))]
+    CodecError { source: javelin_codec::Error },
+
+    #[snafu(display("{}", source))]
+    WriteError { source: transport_stream::Error },
+}
+
+type Result<T, E = Error> = std::result::Result<T, E>;
 
 
 pub struct Writer {
@@ -38,13 +58,12 @@ impl Writer {
         let stream_path = hls_root.join(app_name);
         let playlist_path = stream_path.join("playlist.m3u8");
 
-        if stream_path.exists() && !stream_path.is_dir() {
-            return Err(Error::from(format!("Path '{}' exists, but is not a directory", stream_path.display())));
+        if stream_path.exists() {
+            ensure!(stream_path.is_dir(), InvalidHlsRoot { path: stream_path.clone() });
+        } else {
+            debug!("Creating HLS directory at '{}'", stream_path.display());
+            fs::create_dir_all(&stream_path).context(DirectoryCreationFailed { path: stream_path.clone() })?;
         }
-
-        debug!("Creating HLS directory at '{}'", stream_path.display());
-        fs::create_dir_all(&stream_path)?;
-
 
         Ok(Self {
             receiver,
@@ -64,7 +83,7 @@ impl Writer {
     {
         let timestamp: u64 = timestamp.into();
 
-        let packet = avc::Packet::try_from_buf(bytes, timestamp, &self.shared_state)?;
+        let packet = avc::Packet::try_from_buf(bytes, timestamp, &self.shared_state).context(CodecError)?;
 
         if packet.is_sequence_header() {
             return Ok(());
@@ -80,7 +99,7 @@ impl Writer {
             if timestamp >= self.next_write {
                 let filename = format!("{}-{}.ts", Utc::now().timestamp(), self.keyframe_counter);
                 let path = self.stream_path.join(&filename);
-                self.buffer.write_to_file(&path)?;
+                self.buffer.write_to_file(&path).context(WriteError)?;
                 self.playlist.add_media_segment(filename, keyframe_duration);
                 self.next_write += self.write_interval;
             }
@@ -101,7 +120,7 @@ impl Writer {
     {
         let timestamp: u64 = timestamp.into();
 
-        let packet = aac::Packet::try_from_bytes(bytes, timestamp, &self.shared_state)?;
+        let packet = aac::Packet::try_from_bytes(bytes, timestamp, &self.shared_state).context(CodecError)?;
 
         if self.keyframe_counter == 0 || packet.is_sequence_header() {
             return Ok(());

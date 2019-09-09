@@ -1,6 +1,5 @@
 use std::{
     net::SocketAddr,
-    io::ErrorKind as IoErrorKind,
     sync::atomic::{AtomicUsize, Ordering},
     time::Duration,
 };
@@ -14,11 +13,7 @@ use tokio::{
 use native_tls;
 #[cfg(feature = "tls")]
 use tokio_tls::TlsAcceptor;
-use crate::{
-    error::Error,
-    shared::Shared,
-};
-
+use crate::shared::Shared;
 use super::{Peer, BytesStream};
 
 
@@ -77,12 +72,7 @@ fn process<S>(id: u64, stream: S, shared: &Shared)
 
     let bytes_stream = BytesStream::new(stream);
     let peer = Peer::new(id, bytes_stream, shared.clone())
-        .map_err(|err| {
-            match err {
-                Error::IoError(ref err) if err.kind() == IoErrorKind::ConnectionReset => (),
-                _ => error!("{:?}", err)
-            }
-        });
+        .map_err(|err| error!("{}", err));
 
     tokio::spawn(peer);
 }

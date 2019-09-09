@@ -1,6 +1,7 @@
-use std::{fs::File, path::Path};
+use std::{io, fs::File, path::Path};
 use bytes::{Bytes, Buf, IntoBuf};
 use mpeg2ts::{
+    self,
     ts::{
         ContinuityCounter,
         TsPacket,
@@ -10,8 +11,32 @@ use mpeg2ts::{
     },
     pes::PesHeader,
 };
-use javelin_codec::{avc, aac};
-use crate::Result;
+use snafu::{Snafu, ResultExt};
+use javelin_codec::{self, avc, aac};
+
+
+#[derive(Debug, Snafu)]
+pub enum Error {
+    #[snafu(display("Creating TS file failed: {}", source))]
+    FileCreationFailed { source: io::Error },
+
+    #[snafu(display("Writing {} failed", target))]
+    WritePacketFailed { source: mpeg2ts::Error, target: String },
+
+    #[snafu(display("Invalid PID provided"))]
+    InvalidPid { source: mpeg2ts::Error },
+
+    #[snafu(display("Failed to build payload: {}", source))]
+    PayloadBuildFailed { source: mpeg2ts::Error },
+
+    #[snafu(display("Failed to construct timestamp: {}", source))]
+    TimestampCreationFailed { source: mpeg2ts::Error },
+
+    #[snafu(display("Codec: {}", source))]
+    CodecError { source: javelin_codec::Error },
+}
+
+type Result<T, E = Error> = std::result::Result<T, E>;
 
 
 const PMT_PID: u16 = 256;
@@ -41,15 +66,18 @@ impl Buffer {
     {
         use mpeg2ts::ts::{TsPacketWriter, WriteTsPacket};
 
-        let file = File::create(filename)?;
+        let file = File::create(filename).context(FileCreationFailed)?;
         let packets: Vec<_> = self.packets.drain(..).collect();
         let mut writer = TsPacketWriter::new(file);
 
-        writer.write_ts_packet(&default_pat_packet())?;
-        writer.write_ts_packet(&default_pmt_packet())?;
+        writer.write_ts_packet(&default_pat_packet())
+            .context(WritePacketFailed { target: "PAT" })?;
+        writer.write_ts_packet(&default_pmt_packet())
+            .context(WritePacketFailed { target: "PMT" })?;
 
         for packet in &packets {
-            writer.write_ts_packet(packet)?;
+            writer.write_ts_packet(packet)
+                .context(WritePacketFailed { target: "TS" })?;
         }
 
         Ok(())
@@ -65,9 +93,10 @@ impl Buffer {
         let mut header = default_ts_header(VIDEO_ES_PID)?;
         header.continuity_counter = self.video_continuity_counter;
 
-        let mut buf = video.try_as_bytes()?.into_buf();
+        let mut buf = video.try_as_bytes().context(CodecError)?.into_buf();
         let pes_data: Bytes = buf.by_ref().take(153).collect();
-        let pcr = ClockReference::new(video.timestamp() * 90)?;
+        let pcr = ClockReference::new(video.timestamp() * 90)
+            .context(TimestampCreationFailed)?;
 
         let adaptation_field = if video.is_keyframe() {
             Some(AdaptationField {
@@ -84,8 +113,10 @@ impl Buffer {
             None
         };
 
-        let pts = Timestamp::new(video.presentation_timestamp() * 90)?;
-        let dts = Timestamp::new(video.timestamp() * 90)?;
+        let pts = Timestamp::new(video.presentation_timestamp() * 90)
+            .context(TimestampCreationFailed)?;
+        let dts = Timestamp::new(video.timestamp() * 90)
+            .context(TimestampCreationFailed)?;
 
         let packet = TsPacket {
             header: header.clone(),
@@ -102,7 +133,7 @@ impl Buffer {
                     escr: None,
                 },
                 pes_packet_len: 0,
-                data: payload::Bytes::new(&pes_data)?,
+                data: payload::Bytes::new(&pes_data).context(PayloadBuildFailed)?
             })),
         };
 
@@ -115,7 +146,7 @@ impl Buffer {
             let packet = TsPacket {
                 header: header.clone(),
                 adaptation_field: None,
-                payload: Some(TsPayload::Raw(payload::Bytes::new(&pes_data)?)),
+                payload: Some(TsPayload::Raw(payload::Bytes::new(&pes_data).context(PayloadBuildFailed)?)),
             };
 
             self.packets.push(packet);
@@ -150,12 +181,12 @@ impl Buffer {
                     data_alignment_indicator: false,
                     copyright: false,
                     original_or_copy: false,
-                    pts: Some(Timestamp::new(audio.presentation_timestamp() * 90)?),
+                    pts: Some(Timestamp::new(audio.presentation_timestamp() * 90).context(TimestampCreationFailed)?),
                     dts: None,
                     escr: None,
                 },
                 pes_packet_len: 0,
-                data: payload::Bytes::new(&pes_data)?,
+                data: payload::Bytes::new(&pes_data).context(PayloadBuildFailed)?,
             })),
         };
 
@@ -168,7 +199,7 @@ impl Buffer {
             let packet = TsPacket {
                 header: header.clone(),
                 adaptation_field: None,
-                payload: Some(TsPayload::Raw(payload::Bytes::new(&pes_data)?)),
+                payload: Some(TsPayload::Raw(payload::Bytes::new(&pes_data).context(PayloadBuildFailed)?)),
             };
 
             self.packets.push(packet);
@@ -188,7 +219,7 @@ fn default_ts_header(pid: u16) -> Result<TsHeader> {
     Ok(TsHeader {
         transport_error_indicator: false,
         transport_priority: false,
-        pid: Pid::new(pid)?,
+        pid: Pid::new(pid).context(InvalidPid)?,
         transport_scrambling_control: TransportScramblingControl::NotScrambled,
         continuity_counter: ContinuityCounter::new(),
     })

@@ -1,5 +1,6 @@
 mod bytes_stream;
 mod event;
+mod error;
 pub mod peer;
 pub mod client;
 pub mod server;
@@ -10,5 +11,7 @@ use self::{
     bytes_stream::BytesStream,
 };
 
-pub use self::client::Client;
-pub use self::server::Server;
+pub use self::{
+    client::Client,
+    server::Server,
+};
