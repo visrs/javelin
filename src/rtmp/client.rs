@@ -1,13 +1,33 @@
 use rml_rtmp::sessions::{
     ServerSession,
     ServerSessionConfig,
-    ServerSessionResult
+    ServerSessionResult,
+    ServerSessionError,
 };
+use snafu::{Snafu, ResultExt};
+use super::error::Error as RtmpError;
 use crate::{
-    error::{Error, Result},
     media::Channel,
     shared::Shared,
 };
+
+
+#[derive(Debug, Snafu)]
+pub enum Error {
+    #[snafu(display("Session request denied"))]
+    RequestDenied {
+        #[snafu(source(from(ServerSessionError, RtmpError::from)))]
+        source: RtmpError,
+    },
+
+    #[snafu(display("Session creation failed"))]
+    SessionCreationFailed {
+        #[snafu(source(from(ServerSessionError, RtmpError::from)))]
+        source: RtmpError,
+    },
+}
+
+type Result<T, E = Error> = std::result::Result<T, E>;
 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,7 +51,7 @@ impl Client {
     #[allow(clippy::new_ret_no_self)]
     pub fn new(peer_id: u64, shared: Shared) -> Result<(Self, Vec<ServerSessionResult>)> {
         let session_config = ServerSessionConfig::new();
-        let (session, results) = ServerSession::new(session_config)?;
+        let (session, results) = ServerSession::new(session_config).context(SessionCreationFailed)?;
 
         let this = Self {
             peer_id,
@@ -45,7 +65,7 @@ impl Client {
     }
 
     pub fn accept_request(&mut self, request_id: u32) -> Result<Vec<ServerSessionResult>> {
-        self.session.accept_request(request_id).map_err(|_| Error::RequestError)
+        self.session.accept_request(request_id).context(RequestDenied)
     }
 
     pub fn publish(&mut self, channel: &mut Channel, app_name: String, stream_key: String) {

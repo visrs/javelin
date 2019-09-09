@@ -1,32 +1,58 @@
 use std::time::Duration;
-use log::{error, debug, info};
+use log::{debug, info};
 use futures::{
     sync::mpsc,
     try_ready,
 };
 use tokio::{
     prelude::*,
-    timer::Timeout,
+    timer::{self, Timeout},
 };
 use bytes::{Bytes, BytesMut, BufMut};
 use rml_rtmp::{
     handshake::{
+        HandshakeError,
         Handshake as RtmpHandshake,
         HandshakeProcessResult,
         PeerType,
     },
 };
-use crate::{
-    error::{Error, Result},
-    shared::Shared,
-};
+use snafu::{Snafu, ResultExt};
+use crate::shared::Shared;
 use super::{
-    BytesStream,
+    error::Error as RtmpError,
     event::{
+        self,
         Handler as EventHandler,
         EventResult,
     },
+    bytes_stream::{
+        self,
+        BytesStream,
+    }
 };
+
+
+#[derive(Debug, Snafu)]
+pub enum Error {
+    #[snafu(display("Handshake for peer {} failed: {}", peer_id, source))]
+    HandshakeFailed {
+        #[snafu(source(from(HandshakeError, RtmpError::from)))]
+        source: RtmpError,
+        peer_id: u64,
+    },
+
+    #[snafu(display("Timeout: {}", source))]
+    SocketTimedOut { source: timer::timeout::Error<bytes_stream::Error> },
+
+    #[snafu(display("Bytes Stream: {}", source))]
+    BytesStreamError { source: bytes_stream::Error },
+
+    #[snafu(display("Event Handler: {}", source))]
+    EventHandlerError { source: event::Error },
+}
+
+type Result<T, E = Error> = std::result::Result<T, E>;
 
 
 pub enum Message {
@@ -89,17 +115,16 @@ impl<S> Peer<S>
         use self::HandshakeProcessResult as HandshakeState;
 
         let data = self.buffer.take().freeze();
+        let handshake = self.handshake
+            .process_bytes(&data)
+            .context(HandshakeFailed { peer_id: self.id })?;
 
-        let response_bytes = match self.handshake.process_bytes(&data) {
-            Err(why) => {
-                error!("Handshake for peer {} failed: {}", self.id, why);
-                return Err(Error::HandshakeFailed);
-            },
-            Ok(HandshakeState::InProgress { response_bytes }) => {
+        let response_bytes = match handshake {
+            HandshakeState::InProgress { response_bytes } => {
                 debug!("Handshake pending...");
                 response_bytes
             },
-            Ok(HandshakeState::Completed { response_bytes, remaining_bytes }) => {
+            HandshakeState::Completed { response_bytes, remaining_bytes } => {
                 info!("Handshake for client {} successful", self.id);
                 debug!("Remaining bytes after handshake: {}", remaining_bytes.len());
                 self.handshake_completed = true;
@@ -115,9 +140,7 @@ impl<S> Peer<S>
         };
 
         if !response_bytes.is_empty() {
-            self.sender
-                .unbounded_send(Message::Raw(Bytes::from(response_bytes)))
-                .map_err(|_| Error::HandshakeFailed)?
+            self.sender.unbounded_send(Message::Raw(Bytes::from(response_bytes))).unwrap();
         }
 
         Ok(Async::Ready(()))
@@ -126,7 +149,7 @@ impl<S> Peer<S>
     fn handle_incoming_bytes(&mut self) -> Result<()> {
         let data = self.buffer.take();
 
-        let event_results = self.event_handler.handle(&data)?;
+        let event_results = self.event_handler.handle(&data).context(EventHandlerError)?;
 
         for result in event_results {
             match result {
@@ -168,9 +191,7 @@ impl<S> Future for Peer<S>
         while let Async::Ready(Some(msg)) = self.receiver.poll().unwrap() {
             match msg {
                 Message::Raw(val) => {
-                    self.bytes_stream.get_mut()
-                        .send(val).poll()
-                        .expect("BytesStream send should be infallible");
+                    self.bytes_stream.get_mut().send(val).poll().context(BytesStreamError)?;
                 },
                 Message::Disconnect => {
                     self.disconnecting = true;
@@ -179,7 +200,7 @@ impl<S> Future for Peer<S>
             }
         }
 
-        match try_ready!(self.bytes_stream.poll()) {
+        match try_ready!(self.bytes_stream.poll().context(SocketTimedOut)) {
             Some(data) => {
                 self.buffer.reserve(data.len());
                 self.buffer.put(data);

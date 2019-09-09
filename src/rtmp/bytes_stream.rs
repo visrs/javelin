@@ -4,7 +4,26 @@ use tokio::{
 };
 use futures::{try_ready, StartSend};
 use bytes::{Bytes, BytesMut, BufMut};
-use crate::error::Error;
+use snafu::{ensure, Snafu, ResultExt};
+
+
+#[derive(Debug, Snafu)]
+pub enum Error {
+    #[snafu(display("Read buffer was full"))]
+    ReadBufferFull,
+
+    #[snafu(display("Write buffer was full"))]
+    WriteBufferFull,
+
+    #[snafu(display("Wrote 0 bytes while socket was ready"))]
+    InvalidWrite,
+
+    #[snafu(display("Reading from the socket failed: {}", source))]
+    ReadFailed { source: io::Error },
+
+    #[snafu(display("Writing to the socket failed: {}", source))]
+    WriteFailed { source: io::Error },
+}
 
 
 pub struct BytesStream<S>
@@ -27,10 +46,12 @@ impl<S> BytesStream<S>
         }
     }
 
-    fn fill_read_buffer(&mut self) -> Poll<(), io::Error> {
+    fn fill_read_buffer(&mut self) -> Poll<(), Error> {
+        ensure!(self.buf_in.len() < std::usize::MAX - 4096, ReadBufferFull);
+
         loop {
             self.buf_in.reserve(4096);
-            let bytes_read = try_ready!(self.socket.read_buf(&mut self.buf_in));
+            let bytes_read = try_ready!(self.socket.read_buf(&mut self.buf_in).context(ReadFailed));
 
             if bytes_read == 0 {
                 return Ok(Async::Ready(()));
@@ -69,18 +90,17 @@ impl<S> Sink for BytesStream<S>
     type SinkError = Error;
 
     fn start_send(&mut self, item: Self::SinkItem) -> StartSend<Self::SinkItem, Self::SinkError> {
-        // This could potentially panic if the buffer reaches `usize::MAX`.
+        ensure!(self.buf_out.len() < std::usize::MAX, WriteBufferFull);
+
         self.buf_out.reserve(item.len());
         self.buf_out.put(item);
         Ok(AsyncSink::Ready)
     }
 
     fn poll_complete(&mut self) -> Poll<(), Self::SinkError> {
-        let bytes_written = try_ready!(self.socket.poll_write(&self.buf_out));
+        let bytes_written = try_ready!(self.socket.poll_write(&self.buf_out).context(WriteFailed));
 
-        if bytes_written == 0 {
-            return Err(Error::from("Read 0 bytes while socket was ready"));
-        }
+        ensure!(bytes_written > 0, InvalidWrite);
 
         let _ = self.buf_out.split_to(bytes_written);
 

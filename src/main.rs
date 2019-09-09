@@ -1,6 +1,5 @@
 #![warn(clippy::all)]
 
-mod error;
 mod shared;
 mod config;
 mod media;
@@ -18,10 +17,7 @@ use futures::future::lazy;
 use simplelog::{Config, SimpleLogger, TermLogger, LevelFilter};
 
 #[allow(unused_imports)]
-use self::{
-    shared::Shared,
-    error::{Error, Result},
-};
+use self::shared::Shared;
 
 
 macro_rules! init_logger {
