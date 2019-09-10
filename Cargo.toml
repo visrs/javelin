@@ -9,6 +9,14 @@ readme = "README.md"
 repository = "https://gitlab.com/valeth/javelin.git"
 version = "0.3.6"
 edition = "2018"
+exclude = [
+    ".gitignore",
+    ".editorconfig",
+    ".gitlab-ci.yml",
+    "Dockerfile",
+    "*docker*",
+    "scripts/*"
+]
 
 [workspace]
 members = [
