@@ -15,7 +15,10 @@ use rml_rtmp::{
     },
 };
 use snafu::{Snafu, ResultExt};
-use crate::shared::Shared;
+use crate::{
+    shared::Shared,
+    bytes_stream::{self, BytesStream},
+};
 use super::{
     error::Error as RtmpError,
     event::{
@@ -23,10 +26,6 @@ use super::{
         Handler as EventHandler,
         EventResult,
     },
-    bytes_stream::{
-        self,
-        BytesStream,
-    }
 };
 
 

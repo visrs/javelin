@@ -13,8 +13,11 @@ use tokio::{
 use native_tls;
 #[cfg(feature = "tls")]
 use tokio_tls::TlsAcceptor;
-use crate::shared::Shared;
-use super::{Peer, BytesStream};
+use crate::{
+    shared::Shared,
+    bytes_stream::BytesStream,
+};
+use super::Peer;
 
 
 type ClientId = u64;

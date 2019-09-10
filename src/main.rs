@@ -3,6 +3,7 @@
 mod shared;
 mod config;
 mod media;
+mod bytes_stream;
 mod rtmp;
 mod args;
 
