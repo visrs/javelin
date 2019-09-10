@@ -73,7 +73,7 @@ version = "^1.0"
 
 [dependencies.javelin-codec]
 optional = true
-version = "0.3.4"
+version = "0.3.5"
 path = "javelin-codec"
 
 [features]
