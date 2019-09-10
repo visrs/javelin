@@ -99,7 +99,7 @@ deploy-crates-io:
   extends: .toolchain-stable
   stage: publish
   script:
-    - cargo publish --token $CRATES_IO_API_TOKEN
+    - ./scripts/publish.sh --token $CRATES_IO_API_TOKEN
   only:
     - tags@valeth/javelin
 
