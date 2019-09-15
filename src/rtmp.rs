@@ -1,5 +1,6 @@
-mod event;
+// mod event;
 mod error;
+mod proto;
 pub mod peer;
 pub mod client;
 pub mod server;

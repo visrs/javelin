@@ -148,7 +148,7 @@ impl Handler {
             ConnectionRequested { request_id, app_name } => {
                 self.connection_requested(request_id, &app_name)?;
             },
-            PublishStreamRequested { request_id, app_name, stream_key, .. } => {
+            PublishStreamRequested { request_id, app_name, stream_key, ..  } => {
                 self.publish_requested(request_id, app_name, stream_key)?;
             }
             PlayStreamRequested { request_id, app_name, stream_id, .. } => {
@@ -166,6 +166,12 @@ impl Handler {
             PublishStreamFinished { app_name, stream_key } => {
                 self.publish_stream_finished(&app_name, &stream_key)?;
             },
+            // PlayStreamFinished { app_name: _, stream_key: _ } => {},
+            // ClientChunkSizeChanged { new_chunk_size: _ } => {},
+            // ReleaseStreamRequested { request_id: _, app_name: _, stream_key: _ } => {},
+            // UnhandleableAmf0Command { command_name: _, transaction_id: _, command_object: _, additional_values: _ } => {},
+            // AcknowledgementReceived { bytes_received: _ } => {},
+            // PingResponseReceived { timestamp: _ } => {},
             _ => {
                 debug!("Event: {:?}", event);
             }
