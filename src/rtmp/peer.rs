@@ -1,19 +1,20 @@
-#[allow(unused_imports)]
-use log::{error, debug, info};
-use futures::{
-    sync::mpsc,
-    try_ready,
+use {
+    log::{error, debug, info},
+    futures::{
+        sync::mpsc,
+        try_ready,
+    },
+    tokio::prelude::*,
+    bytes::{Bytes, BytesMut, BufMut},
+    snafu::{Snafu, ResultExt},
 };
-use tokio::prelude::*;
-use bytes::{Bytes, BytesMut, BufMut};
-use snafu::{Snafu, ResultExt};
 use crate::{
     shared::Shared,
     bytes_stream::{self, BytesStream},
 };
 use super::{
     proto::{
-        Session,
+        Protocol,
         Config as SessionConfig,
         Message as SessionMessage,
     },
@@ -48,7 +49,7 @@ pub struct Peer<S>
     receiver: Receiver,
     shared: Shared,
     disconnecting: bool,
-    session: Session,
+    session: Protocol,
 }
 
 impl<S> Peer<S>
@@ -73,32 +74,9 @@ impl<S> Peer<S>
             receiver,
             shared,
             disconnecting: false,
-            session: Session::new(session_config),
+            session: Protocol::new(session_config),
         }
     }
-
-//    fn handle_incoming_bytes(&mut self) -> Result<()> {
-//        let data = self.buffer.take();
-//
-//        let event_results = self.event_handler.handle(&data).context(EventHandlerError)?;
-//
-//        for result in event_results {
-//            match result {
-//                EventResult::Outbound(target_peer_id, packet) => {
-//                    let peers = self.shared.peers.read();
-//                    let peer = peers.get(&target_peer_id).unwrap();
-//                    // debug!("Packet from {} to {} with {:?} bytes", self.id, target_peer_id, packet.bytes.len());
-//                    peer.unbounded_send(Message::Raw(Bytes::from(packet.bytes))).unwrap();
-//                },
-//                EventResult::Disconnect => {
-//                    self.disconnecting = true;
-//                    break;
-//                }
-//            }
-//        }
-//
-//        Ok(())
-//    }
 }
 
 impl<S> Drop for Peer<S>
@@ -133,30 +111,20 @@ impl<S> Future for Peer<S>
             }
         }
 
-        match try_ready!(self.bytes_stream.poll().context(BytesStreamError)) {
-            Some(data) => {
-                for result in self.session.handle_bytes(&data).unwrap() {
-                    match result {
-                        SessionMessage::Packet { payload, .. } => {
-                            self.sender.unbounded_send(Message::Raw(payload)).unwrap();
-                        },
-                        SessionMessage::RegisterSource(app_name) => {
-//                            self.sender.unbounded_send(Message::RegisterSource(app_name)).unwrap();
-                            debug!("Registering source for {}", app_name);
-                        },
-                        SessionMessage::Metadata(metadata) => {
-                            debug!("Metadata: {:#?}", metadata);
-                        },
-                        SessionMessage::AudioData(bytes, timestamp) | SessionMessage::VideoData(bytes, timestamp) => {
-                            debug!("Received multimedia data");
-                        }
-                        msg => debug!("Unhandled message: {:?}", msg),
-                    }
+        if let Some(data) = try_ready!(self.bytes_stream.poll().context(BytesStreamError)) {
+            for message in self.session.handle_bytes(&data).unwrap() {
+                match message {
+                    SessionMessage::Packet { payload, .. } => {
+                        self.sender.unbounded_send(Message::Raw(payload)).unwrap();
+                    },
+                    | SessionMessage::Metadata(..)
+                    | SessionMessage::AudioData(..)
+                    | SessionMessage::VideoData(..) => {},
+                    msg => debug!("RTMP: {:?}", msg),
                 }
-            },
-            None => {
-                return Ok(Async::Ready(()));
-            },
+            }
+        } else {
+            return Ok(Async::Ready(()));
         }
 
         if self.disconnecting {

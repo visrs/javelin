@@ -1,4 +1,6 @@
 #![warn(clippy::all)]
+// FIXME: remove the following attribute
+#![allow(unused)]
 
 mod shared;
 mod config;

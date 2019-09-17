@@ -19,12 +19,13 @@ pub type AudioData = Bytes;
 #[derive(Debug, Clone)]
 pub enum Message {
     Packet { droppable: bool, payload: Bytes },
+    Authenticate(ApplicationName, StreamKey),
     RegisterSource(ApplicationName),
     RegisterSink(ApplicationName),
     VideoData(Bytes, Timestamp),
     AudioData(Bytes, Timestamp),
     Metadata(Metadata),
-    Finished,
+    Finished(ApplicationName),
 }
 
 impl From<&[u8]> for Message {
