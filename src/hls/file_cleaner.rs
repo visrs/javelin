@@ -1,15 +1,10 @@
-use std::{
-    path::PathBuf,
-    fs,
-    time::{Instant, Duration},
+use {
+    std::{path::PathBuf, fs, time::{Instant, Duration}},
+    log::{debug, error},
+    futures::sync::mpsc::{self, UnboundedSender, UnboundedReceiver},
+    tokio::{prelude::*, timer::DelayQueue},
 };
-use log::{debug, error};
-use futures::sync::mpsc::{self, UnboundedSender, UnboundedReceiver};
-use tokio::{
-    prelude::*,
-    timer::DelayQueue,
-};
-use crate::shared::Shared;
+
 
 type Batch = Vec<PathBuf>;
 type Message = (Duration, Batch);
@@ -20,16 +15,16 @@ type Receiver = UnboundedReceiver<Message>;
 pub struct FileCleaner {
     items: DelayQueue<Batch>,
     receiver: Receiver,
+    sender: Sender,
 }
 
 impl FileCleaner {
-    pub fn new(mut shared: Shared) -> Self {
+    pub fn new() -> Self {
         let (sender, receiver) = mpsc::unbounded();
-
-        shared.set_fcleaner_sender(sender);
 
         Self {
             items: DelayQueue::new(),
+            sender,
             receiver,
         }
     }
@@ -45,6 +40,10 @@ impl FileCleaner {
                 _ => break,
             }
         }
+    }
+
+    pub fn sender(&self) -> Sender {
+        self.sender.clone()
     }
 }
 
@@ -69,6 +68,7 @@ impl Future for FileCleaner {
     }
 }
 
+
 fn remove_files(paths: &[PathBuf]) {
     debug!("Cleaning up {} files", paths.len());
 
@@ -76,7 +76,6 @@ fn remove_files(paths: &[PathBuf]) {
         remove_file(path);
     }
 }
-
 
 fn remove_file(path: &PathBuf) {
     if let Err(why) = fs::remove_file(path) {

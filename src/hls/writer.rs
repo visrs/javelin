@@ -1,21 +1,24 @@
-use std::{io, path::PathBuf, fs};
-use log::{debug, error, warn};
-use futures::try_ready;
-use tokio::prelude::*;
-use bytes::Bytes;
-use chrono::Utc;
-use snafu::{Snafu, ResultExt, ensure};
+use {
+    std::{io, path::PathBuf, fs},
+    log::{debug, error, warn},
+    futures::try_ready,
+    tokio::prelude::*,
+    bytes::Bytes,
+    chrono::Utc,
+    snafu::{Snafu, ResultExt, ensure},
+};
 use javelin_codec::{self, avc, aac};
+use crate::{
+    media::{self, Media},
+    config,
+};
 use super::{
     transport_stream::{
         self,
         Buffer as TsBuffer
     },
     m3u8::Playlist,
-};
-use crate::{
-    shared::Shared,
-    media::{self, Media},
+    file_cleaner,
 };
 
 
@@ -50,11 +53,11 @@ pub struct Writer {
 }
 
 impl Writer {
-    pub fn create(app_name: String, receiver: media::Receiver, shared: &Shared) -> Result<Self> {
+    pub fn create(app_name: String, receiver: media::Receiver, config: config::HlsConfig, file_cleaner: file_cleaner::Sender) -> Result<Self> {
         let write_interval = 2000; // milliseconds
         let next_write = write_interval; // milliseconds
 
-        let hls_root = shared.config.read().hls.root_dir.clone();
+        let hls_root = config.root_dir;
         let stream_path = hls_root.join(app_name);
         let playlist_path = stream_path.join("playlist.m3u8");
 
@@ -73,7 +76,7 @@ impl Writer {
             keyframe_counter: 0,
             buffer: TsBuffer::new(),
             shared_state: javelin_codec::SharedState::new(),
-            playlist: Playlist::new(playlist_path, shared),
+            playlist: Playlist::new(playlist_path, file_cleaner),
             stream_path,
         })
     }
@@ -140,7 +143,6 @@ impl Writer {
         }
     }
 }
-
 
 impl Future for Writer {
     type Item = ();

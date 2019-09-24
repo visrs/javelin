@@ -13,8 +13,10 @@ mod hls;
 mod web;
 
 
-use futures::future::lazy;
-use simplelog::{Config, SimpleLogger, TermLogger, LevelFilter};
+use {
+    futures::future::lazy,
+    simplelog::{Config, SimpleLogger, TermLogger, LevelFilter},
+};
 
 #[allow(unused_imports)]
 use self::shared::Shared;
@@ -53,12 +55,11 @@ fn spawn_hls_server(mut shared: Shared) {
     };
 
     if enabled {
-        let hls_server = hls::Server::new(shared.clone());
+        let config = shared.config.read().hls.clone();
+        let hls_server = hls::Server::new(config);
         let hls_sender = hls_server.sender();
-        let file_cleaner = hls::file_cleaner::FileCleaner::new(shared.clone());
         shared.set_hls_sender(hls_sender);
         tokio::spawn(hls_server);
-        tokio::spawn(file_cleaner);
     }
 }
 

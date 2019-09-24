@@ -1,16 +1,12 @@
-use std::{
-    io::Result,
-    fs,
-    path::PathBuf,
-    time::Duration,
+use {
+    std::{io::Result, fs, path::PathBuf, time::Duration},
+    log::error,
+    m3u8_rs::playlist::{MediaPlaylist, MediaSegment},
+    tempfile::NamedTempFile,
 };
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use log::error;
-use m3u8_rs::playlist::{MediaPlaylist, MediaSegment};
-use tempfile::NamedTempFile;
 use super::file_cleaner;
-use crate::shared::Shared;
 
 
 pub struct Playlist {
@@ -25,15 +21,13 @@ impl Playlist {
     const DEFAULT_TARGET_DURATION: f32 = 6.0;
     const PLAYLIST_CACHE_DURATION: u64 = 30000; // milliseconds
 
-    pub fn new<P>(path: P, shared: &Shared) -> Self
+    pub fn new<P>(path: P, file_cleaner: file_cleaner::Sender) -> Self
         where P: Into<PathBuf>
     {
         let mut playlist = MediaPlaylist::default();
         playlist.version = 3;
         playlist.target_duration = Self::DEFAULT_TARGET_DURATION;
         playlist.media_sequence = 0;
-
-        let file_cleaner = shared.fcleaner_sender().expect("Missing file cleaner sender");
 
         Self {
             file_path: path.into(),
@@ -58,7 +52,9 @@ impl Playlist {
             .collect();
 
         self.playlist.media_sequence += paths.len() as i32;
-        self.file_cleaner.unbounded_send((Duration::from_millis(delete_after), paths)).unwrap();
+        self.file_cleaner
+            .unbounded_send((Duration::from_millis(delete_after), paths))
+            .expect("Failed to send to file cleaner");
     }
 
     pub fn add_media_segment<S>(&mut self, uri: S, duration: u64)
