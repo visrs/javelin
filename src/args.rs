@@ -13,34 +13,6 @@ pub fn build_args<'a>() -> ArgMatches<'a> {
         .author(crate_authors!("\n"))
         .about(crate_description!())
         .setting(AppSettings::ColoredHelp)
-        .arg(Arg::with_name("bind")
-            .short("b")
-            .long("rtmp-bind")
-            .alias("bind")
-            .value_name("ADDRESS")
-            .default_value("0.0.0.0")
-            .display_order(1)
-            .help("Host address to bind to"))
-        .arg(Arg::with_name("port")
-            .short("p")
-            .long("rtmp-port")
-            .alias("port")
-            .value_name("PORT")
-            .default_value("1935")
-            .display_order(1)
-            .help("Port to listen on"))
-        .arg(Arg::with_name("permitted_stream_keys")
-            .short("k")
-            .long("permit-stream-key")
-            .value_name("KEY")
-            .display_order(2)
-            .help("Permit a stream key for publishing")
-            .multiple(true))
-        .arg(Arg::with_name("republish_action")
-            .long("republish-action")
-            .possible_values(&["replace", "deny"])
-            .default_value("replace")
-            .help("The action to take when a republishing to the same application"))
         .arg(Arg::with_name("config_dir")
             .short("c")
             .long("config-dir")
@@ -48,6 +20,73 @@ pub fn build_args<'a>() -> ArgMatches<'a> {
             .help("The directory where all config files are located"));
 
     let mut args = Vec::new();
+
+    // RTMP
+    args.push(Arg::with_name("rtmp_bind")
+        .short("b")
+        .long("rtmp-bind")
+        .alias("bind")
+        .value_name("ADDRESS")
+        .default_value("0.0.0.0")
+        .display_order(1)
+        .help("Host address to bind to"));
+
+    args.push(Arg::with_name("rtmp_port")
+        .short("p")
+        .long("rtmp-port")
+        .alias("port")
+        .value_name("PORT")
+        .default_value("1935")
+        .display_order(1)
+        .help("Port to listen on"));
+
+    args.push(Arg::with_name("rtmp_permitted_streams")
+        .short("k")
+        .long("rtmp-permit-stream")
+        .alias("permit-stream-key")
+        .value_name("KEY")
+        .display_order(1)
+        .multiple(true)
+        .help("Permit a stream key for publishing"));
+
+    args.push(Arg::with_name("rtmp_republish_action")
+        .long("rtmp-republish-action")
+        .alias("republish-action")
+        .possible_values(&["replace", "deny"])
+        .default_value("replace")
+        .display_order(1)
+        .help("The action to take when a republishing to the same application"));
+
+    // RTMPS
+    if cfg!(feature = "tls") {
+        args.push(Arg::with_name("rtmps_bind")
+            .long("rtmps-bind")
+            .value_name("ADDRESS")
+            .default_value("0.0.0.0")
+            .display_order(1)
+            .help("Host address to bind to"));
+
+        args.push(Arg::with_name("rtmps_port")
+            .long("rtmps-port")
+            .value_name("PORT")
+            .default_value("1936")
+            .display_order(2)
+            .help("Port to listen on for RTMPS"));
+
+        args.push(Arg::with_name("rtmps_enabled")
+            .long("enable-rtmps")
+            .alias("enable-tls")
+            .requires("rtmps_tls_cert")
+            .display_order(2)
+            .help("Enables TLS support"));
+
+        args.push(Arg::with_name("rtmps_tls_cert")
+            .long("rtmps-tls-cert")
+            .alias("tls-cert")
+            .value_name("CERTIFICATE")
+            .display_order(2)
+            .help("The TLS certificate to use"));
+    }
 
     if cfg!(feature = "web") {
         args.push(Arg::with_name("http_disabled")
@@ -79,19 +118,6 @@ pub fn build_args<'a>() -> ArgMatches<'a> {
             .value_name("PATH")
             .display_order(20)
             .help("The directory where stream output will be placed"));
-    }
-
-    if cfg!(feature = "tls") {
-        args.push(Arg::with_name("tls_enabled")
-            .long("enable-tls")
-            .requires("tls_cert")
-            .help("Enables TLS support"));
-
-        args.push(Arg::with_name("tls_cert")
-            .long("tls-cert")
-            .value_name("CERTIFICATE")
-            .display_order(30)
-            .help("The TLS certificate to use"));
     }
 
     app = app.args(&args);

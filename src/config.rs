@@ -66,6 +66,7 @@ impl FromStr for RepublishAction {
 #[derive(Debug, Clone)]
 #[cfg(feature = "tls")]
 pub struct TlsConfig {
+    pub addr: SocketAddr,
     pub cert_path: Option<PathBuf>,
     pub cert_password: String,
     pub enabled: bool,
@@ -74,16 +75,19 @@ pub struct TlsConfig {
 #[cfg(feature = "tls")]
 impl TlsConfig {
     pub fn new(args: &ArgMatches) -> Self {
-        let enabled = args.is_present("tls_enabled");
+        let enabled = args.is_present("rtmps_enabled");
+        let port = args.value_of("rtmps_port").expect("Failed to get value");
+        let bind = args.value_of("rtmps_bind").expect("Failed to get value");
+        let addr = format!("{}:{}", bind, port).parse::<SocketAddr>().unwrap();
 
         if enabled {
-            let cert_path = args.value_of("tls_cert")
+            let cert_path = args.value_of("rtmps_tls_cert")
                 .map(|v| Some(PathBuf::from(v)))
                 .unwrap_or(None);
             let cert_password = Self::cert_password();
-            Self { cert_path, cert_password, enabled }
+            Self { addr, cert_path, cert_password, enabled }
         } else {
-            Self { cert_path: None, cert_password: "".to_string(), enabled }
+            Self { addr, cert_path: None, cert_password: "".to_string(), enabled }
         }
     }
 
@@ -155,12 +159,12 @@ impl From<&ArgMatches<'_>> for RtmpConfig {
     fn from(args: &ArgMatches) -> Self {
         let permitted_stream_keys = load_permitted_stream_keys(&args);
 
-        let host = args.value_of("bind").expect("BUG: default value for 'bind' missing");
-        let port = args.value_of("port").expect("BUG: default value for 'port' missing");
+        let host = args.value_of("rtmp_bind").expect("BUG: default value for 'rtmp_bind' missing");
+        let port = args.value_of("rtmp_port").expect("BUG: default value for 'rtmp_port' missing");
         let addr = format!("{}:{}", host, port).parse().expect("Invalid address or port name");
 
         let republish_action = args
-            .value_of("republish_action")
+            .value_of("rtmp_republish_action")
             .expect("BUG: default value for 'republish_action' missing")
             .parse()
             .unwrap(); // this should be safe to unwrap
@@ -221,7 +225,7 @@ fn load_permitted_stream_keys(args: &ArgMatches) -> KeyRegistry {
     }
 
     let keys = args
-        .values_of("permitted_stream_keys")
+        .values_of("rtmp_permitted_streams")
         .unwrap_or_default()
         .fold(HashMap::new(), |mut acc, elem| {
             let tmp = elem.split(':').collect::<Vec<_>>();
