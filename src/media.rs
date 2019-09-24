@@ -7,6 +7,7 @@ use rml_rtmp::{
 #[cfg(feature = "hls")]
 use futures::sync::mpsc;
 use chrono::prelude::{DateTime, Utc};
+use crate::rtmp::ClientId;
 
 
 #[cfg(feature = "hls")]
@@ -49,9 +50,9 @@ impl Media {
 
 
 pub struct Channel {
-    pub publisher: Option<u64>,
+    pub publisher: Option<ClientId>,
     pub stream_key: Option<String>,
-    pub watchers: HashSet<u64>,
+    pub watchers: HashSet<ClientId>,
     pub metadata: Option<StreamMetadata>,
     pub video_seq_header: Option<Bytes>,
     pub audio_seq_header: Option<Bytes>,
@@ -71,7 +72,7 @@ impl Channel {
         }
     }
 
-    pub fn set_publisher(&mut self, publisher_id: u64, stream_key: String) {
+    pub fn set_publisher(&mut self, publisher_id: ClientId, stream_key: String) {
         self.publisher = Some(publisher_id);
         self.stream_key = Some(stream_key);
         self.publish_start = Some(Utc::now());
@@ -82,7 +83,7 @@ impl Channel {
         self.publisher != None
     }
 
-    pub fn add_watcher(&mut self, watcher_id: u64) {
+    pub fn add_watcher(&mut self, watcher_id: ClientId) {
         self.watchers.insert(watcher_id);
     }
 

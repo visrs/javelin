@@ -41,10 +41,15 @@ fn main() {
         #[cfg(feature = "hls")]
         spawn_hls_server(shared.clone());
 
-        tokio::spawn(rtmp::Server::new(shared.clone()));
+        spawn_rtmp_server(shared.clone());
 
         Ok(())
     }));
+}
+
+fn spawn_rtmp_server(shared: Shared) {
+    let config = shared.config.read().rtmp.clone();
+    tokio::spawn(rtmp::Server::new(config, shared.clone()));
 }
 
 #[cfg(feature = "hls")]

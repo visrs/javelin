@@ -1,34 +1,36 @@
-use std::{
-    collections::VecDeque,
-    rc::Rc,
-};
-use::log::{debug, error, info};
-#[cfg(feature = "hls")]
-use futures::{sync::oneshot, Future};
-use rml_rtmp::{
-    sessions::{
-        ServerSessionError,
-        ServerSessionResult,
-        ServerSessionEvent as Event,
-        StreamMetadata,
+use {
+    std::{collections::VecDeque, rc::Rc},
+    log::{debug, error, info},
+    snafu::{ensure, Snafu, ResultExt, OptionExt},
+    rml_rtmp::{
+        sessions::{
+            ServerSessionError,
+            ServerSessionResult,
+            ServerSessionEvent as Event,
+            StreamMetadata,
+        },
+        chunk_io::Packet,
+        time::RtmpTimestamp
     },
-    chunk_io::Packet,
-    time::RtmpTimestamp
 };
-use snafu::{ensure, Snafu, ResultExt, OptionExt};
-use crate::{
-    config::RepublishAction,
-    shared::Shared,
-    media::{Media, Channel},
-};
+// TODO: BEGONE THOT!
 #[cfg(feature = "hls")]
+use {
+    futures::{sync::oneshot, Future}
+};
 use crate::{
-    media,
+    config::{
+        RtmpConfig as Config,
+        RepublishAction,
+    },
+    shared::Shared,
+    media::{self, Media, Channel},
 };
 use super::{
     error::Error as RtmpError,
     client::{self, Client},
     peer,
+    ClientId,
 };
 
 
@@ -73,14 +75,15 @@ type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
 pub enum EventResult {
-    Outbound(u64, Packet),
+    Outbound(ClientId, Packet),
     Disconnect,
 }
 
 
 pub struct Handler {
-    peer_id: u64,
+    peer_id: ClientId,
     results: VecDeque<EventResult>,
+    config: Config,
     shared: Shared,
     #[cfg(feature = "hls")]
     media_sender: Option<media::Sender>,
@@ -88,7 +91,7 @@ pub struct Handler {
 
 impl Handler {
     #[allow(clippy::new_ret_no_self)]
-    pub fn new(peer_id: u64, shared: Shared) -> Result<Self> {
+    pub fn new(peer_id: ClientId, config: Config, shared: Shared) -> Result<Self> {
         let results = {
             let mut clients = shared.clients.lock();
             let (client, results) = Client::new(peer_id, shared.clone()).context(ClientError)?;
@@ -99,6 +102,7 @@ impl Handler {
         let mut this = Self {
             peer_id,
             results: VecDeque::new(),
+            config,
             shared,
             #[cfg(feature = "hls")]
             media_sender: None,
@@ -175,11 +179,9 @@ impl Handler {
     }
 
     fn authenticate_user(&self, app_name: &str, stream_key: &str) -> Result<()> {
-        let config = self.shared.config.read();
-
         ensure!(!stream_key.is_empty(), EmptyStreamKey);
 
-        match config.permitted_stream_keys.get(app_name) {
+        match self.config.permitted_stream_keys.get(app_name) {
             Some(k) if stream_key != k => {
                 Err(Error::UnpermittedStreamKey { app_name: app_name.to_string(), stream_key: stream_key.to_string() })
             },
@@ -215,10 +217,9 @@ impl Handler {
 
         {
             let mut streams = self.shared.streams.write();
-            let config = self.shared.config.read();
             if let Some(stream) = streams.get_mut(&app_name) {
                 if let Some(publisher) = &stream.publisher {
-                    match config.republish_action {
+                    match self.config.republish_action {
                         RepublishAction::Replace => {
                             info!("Another client is already publishing to this app, removing client");
                             let peers = self.shared.peers.write();

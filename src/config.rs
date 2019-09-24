@@ -1,10 +1,15 @@
-use std::{
-    io,
-    collections::HashMap,
-    net::SocketAddr,
-    str::FromStr,
-    result,
-    path::PathBuf,
+use {
+    std::{
+        io,
+        collections::HashMap,
+        net::SocketAddr,
+        str::FromStr,
+        result,
+        path::PathBuf,
+    },
+    snafu::{Snafu, ResultExt},
+    log::{debug, error},
+    clap::ArgMatches,
 };
 #[cfg(feature = "tls")]
 use std::{
@@ -12,9 +17,6 @@ use std::{
     io::Read,
     env,
 };
-use log::{debug, error};
-use clap::ArgMatches;
-use snafu::{Snafu, ResultExt};
 use crate::args;
 
 
@@ -140,33 +142,24 @@ impl WebConfig {
     }
 }
 
-
-type KeyRegistry = HashMap<String, String>;
-
 #[derive(Debug, Clone)]
-pub struct Config {
+pub struct RtmpConfig {
     pub addr: SocketAddr,
     pub permitted_stream_keys: KeyRegistry,
     pub republish_action: RepublishAction,
     #[cfg(feature = "tls")]
     pub tls: TlsConfig,
-    #[cfg(feature = "hls")]
-    pub hls: HlsConfig,
-    #[cfg(feature = "web")]
-    pub web: WebConfig,
 }
 
-impl Config {
-    pub fn new() -> Self {
-        let matches = args::build_args();
+impl From<&ArgMatches<'_>> for RtmpConfig {
+    fn from(args: &ArgMatches) -> Self {
+        let permitted_stream_keys = load_permitted_stream_keys(&args);
 
-        let permitted_stream_keys = load_permitted_stream_keys(&matches);
-
-        let host = matches.value_of("bind").expect("BUG: default value for 'bind' missing");
-        let port = matches.value_of("port").expect("BUG: default value for 'port' missing");
+        let host = args.value_of("bind").expect("BUG: default value for 'bind' missing");
+        let port = args.value_of("port").expect("BUG: default value for 'port' missing");
         let addr = format!("{}:{}", host, port).parse().expect("Invalid address or port name");
 
-        let republish_action = matches
+        let republish_action = args
             .value_of("republish_action")
             .expect("BUG: default value for 'republish_action' missing")
             .parse()
@@ -177,7 +170,30 @@ impl Config {
             permitted_stream_keys,
             republish_action,
             #[cfg(feature = "tls")]
-            tls: TlsConfig::new(&matches),
+            tls: TlsConfig::new(&args),
+        }
+    }
+}
+
+
+type KeyRegistry = HashMap<String, String>;
+
+#[derive(Debug, Clone)]
+pub struct Config {
+    pub rtmp: RtmpConfig,
+    #[cfg(feature = "hls")]
+    pub hls: HlsConfig,
+    #[cfg(feature = "web")]
+    pub web: WebConfig,
+}
+
+impl Config {
+    pub fn new() -> Self {
+        let matches = args::build_args();
+
+
+        Self {
+            rtmp: RtmpConfig::from(&matches),
             #[cfg(feature = "hls")]
             hls: HlsConfig::new(&matches),
             #[cfg(feature = "web")]

@@ -6,6 +6,9 @@ pub mod client;
 pub mod server;
 
 
+pub type ClientId = usize;
+
+
 use self::{
     peer::Peer,
     bytes_stream::BytesStream,

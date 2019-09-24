@@ -1,21 +1,22 @@
-#[allow(unused_imports)]
-use log::{error, debug, info};
-use futures::{
-    sync::mpsc,
-    try_ready,
-};
-use tokio::prelude::*;
-use bytes::{Bytes, BytesMut, BufMut};
-use rml_rtmp::{
-    handshake::{
-        HandshakeError,
-        Handshake as RtmpHandshake,
-        HandshakeProcessResult,
-        PeerType,
+use {
+    log::{error, debug, info},
+    snafu::{Snafu, ResultExt},
+    futures::{sync::mpsc, try_ready},
+    bytes::{Bytes, BytesMut, BufMut},
+    tokio::prelude::*,
+    rml_rtmp::{
+        handshake::{
+            HandshakeError,
+            Handshake as RtmpHandshake,
+            HandshakeProcessResult,
+            PeerType,
+        },
     },
 };
-use snafu::{Snafu, ResultExt};
-use crate::shared::Shared;
+use crate::{
+    config::RtmpConfig as Config,
+    shared::Shared
+};
 use super::{
     error::Error as RtmpError,
     event::{
@@ -26,7 +27,8 @@ use super::{
     bytes_stream::{
         self,
         BytesStream,
-    }
+    },
+    ClientId,
 };
 
 
@@ -36,7 +38,7 @@ pub enum Error {
     HandshakeFailed {
         #[snafu(source(from(HandshakeError, RtmpError::from)))]
         source: RtmpError,
-        peer_id: u64,
+        peer_id: ClientId,
     },
 
     #[snafu(display("Bytes Stream: {}", source))]
@@ -62,7 +64,7 @@ type Receiver = mpsc::UnboundedReceiver<Message>;
 pub struct Peer<S>
     where S: AsyncRead + AsyncWrite
 {
-    id: u64,
+    id: ClientId,
     bytes_stream: BytesStream<S>,
     sender: Sender,
     receiver: Receiver,
@@ -77,9 +79,9 @@ pub struct Peer<S>
 impl<S> Peer<S>
     where S: AsyncRead + AsyncWrite
 {
-    pub fn new(id: u64, bytes_stream: BytesStream<S>, shared: Shared) -> Self {
+    pub fn new(id: ClientId, bytes_stream: BytesStream<S>, config: Config, shared: Shared) -> Self {
         let (sender, receiver) = mpsc::unbounded();
-        let event_handler = EventHandler::new(id, shared.clone())
+        let event_handler = EventHandler::new(id, config,shared.clone())
             .unwrap_or_else(|_| {
                 panic!("Failed to create event handler for peer {}", id)
             });
