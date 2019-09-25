@@ -73,26 +73,19 @@ impl Server {
         }
     }
 
-    fn next_client_id(&self) -> ClientId {
-        let id = self.client_id.load(Ordering::SeqCst);
-        self.client_id.fetch_add(1, Ordering::SeqCst);
-        id
-    }
-
     fn poll_rtmp(&mut self) -> Poll<(), ()> {
-        if let Some(tcp_stream) = try_ready!(self.rtmp_listener.poll().map_err(log_error)) {
+        while let Some(tcp_stream) = try_ready!(self.rtmp_listener.poll().map_err(log_error)) {
             tcp_stream
                 .set_keepalive(Some(Duration::from_secs(30)))
                 .expect("Failed to set TCP keepalive");
 
             let config = self.config.clone();
             let shared = self.shared.clone();
-            let id = self.next_client_id();
+            let id = self.client_id.fetch_add(1, Ordering::SeqCst);
+
             let peer = rtmp_peer(id, tcp_stream, config, shared);
 
             tokio::spawn(peer);
-
-            return Ok(Async::NotReady);
         }
 
         Ok(Async::Ready(()))
@@ -100,14 +93,19 @@ impl Server {
 
     #[cfg(feature = "tls")]
     fn poll_rtmps(&mut self) -> Poll<(), ()> {
-        if let Some(rtmps_listener) = &mut self.rtmps_listener {
-            if let Some(tcp_stream) = try_ready!(rtmps_listener.poll().map_err(log_error)) {
-                let id = self.next_client_id();
-                let peer = rtmps_peer(id, tcp_stream, self.config.clone(), self.shared.clone());
+        if let Some(ref mut rtmps_listener) = self.rtmps_listener {
+            while let Some(tcp_stream) = try_ready!(rtmps_listener.poll().map_err(log_error)) {
+                tcp_stream
+                    .set_keepalive(Some(Duration::from_secs(30)))
+                    .expect("Failed to set TCP keepalive");
+
+                let config = self.config.clone();
+                let shared = self.shared.clone();
+                let id = self.client_id.fetch_add(1, Ordering::SeqCst);
+
+                let peer = rtmps_peer(id, tcp_stream, config, shared);
 
                 tokio::spawn(peer);
-
-                return Ok(Async::NotReady);
             }
         }
 
@@ -120,16 +118,13 @@ impl Future for Server {
     type Error = ();
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let is_closed = self.poll_rtmp()?.is_ready();
-
         #[cfg(feature = "tls")]
-        let is_closed = self.poll_rtmps()?.is_ready() && is_closed;
+        self.poll_rtmps()?;
 
-        if is_closed {
-            Ok(Async::Ready(()))
-        } else {
-            Ok(Async::NotReady)
-        }
+        self.poll_rtmp()?;
+
+        // Poll forever until dropped
+        Ok(Async::NotReady)
     }
 }
 
@@ -148,10 +143,6 @@ fn rtmp_peer<S>(id: ClientId, stream: S, config: Config, shared: Shared) -> impl
 
 #[cfg(feature = "tls")]
 fn rtmps_peer(id: ClientId, stream: TcpStream, config: Config, shared: Shared) -> impl Future<Item = (), Error = ()> {
-    stream
-        .set_keepalive(Some(Duration::from_secs(30)))
-        .expect("Failed to set TCP keepalive");
-
     let p12 = config.tls.read_cert().expect("Failed to read TLS certificate");
     let password = &config.tls.cert_password;
     let cert = native_tls::Identity::from_pkcs12(&p12, password).unwrap();
