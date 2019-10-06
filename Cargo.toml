@@ -21,7 +21,8 @@ exclude = [
 [workspace]
 members = [
     "./",
-    "./javelin-codec"
+    "./javelin-codec",
+    "./javelin-core"
 ]
 
 [dependencies]
@@ -33,6 +34,8 @@ rml_rtmp = "^0.2"
 serde = "^1.0"
 serde_yaml = "^0.8"
 snafu = "^0.5.0"
+javelin-core = { version = "0.3.6", path = "javelin-core" }
+javelin-codec = { version = "0.3.5", path = "javelin-codec", optional = true }
 
 [dependencies.clap]
 version = "~2.32"
@@ -78,11 +81,6 @@ version = "0.1"
 [dependencies.serde_json]
 optional = true
 version = "^1.0"
-
-[dependencies.javelin-codec]
-optional = true
-version = "0.3.5"
-path = "javelin-codec"
 
 [features]
 default = ["tls", "hls", "web"]

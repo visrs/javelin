@@ -3,5 +3,5 @@
 !Cargo.toml
 !Cargo.lock
 
-!javelin-codec/
-!javelin-codec/*
+!javelin-*/
+!javelin-*/*

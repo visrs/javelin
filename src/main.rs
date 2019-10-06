@@ -1,5 +1,8 @@
 #![warn(clippy::all)]
 
+#![allow(unused_variables)]
+#![allow(unused_imports)]
+
 mod shared;
 mod config;
 mod media;
@@ -16,10 +19,12 @@ mod web;
 use {
     futures::future::lazy,
     simplelog::{Config, SimpleLogger, TermLogger, LevelFilter},
+    javelin_core::session::{self, SessionBusSender},
 };
 
-#[allow(unused_imports)]
-use self::shared::Shared;
+use crate::{
+    shared::Shared,
+};
 
 
 macro_rules! init_logger {
@@ -38,6 +43,11 @@ fn main() {
     spawn_web_server(shared.clone());
 
     tokio::run(lazy(move || {
+        let allowed_sessions = shared.config.read().rtmp.permitted_stream_keys.clone();
+        let session_manager = session::SessionManager::new(allowed_sessions);
+        let session_sender = session_manager.sender();
+        tokio::spawn(session_manager);
+
         #[cfg(feature = "hls")]
         spawn_hls_server(shared.clone());
 

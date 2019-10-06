@@ -1,0 +1,24 @@
+[package]
+authors = ["Patrick Auernig <dev.patrick.auernig@gmail.com>"]
+name = "javelin-core"
+description = "Essential components of the Javelin streaming server"
+keywords = ["video", "audio"]
+license = "GPL-3.0"
+repository = "https://gitlab.com/valeth/javelin.git"
+version = "0.3.6"
+edition = "2018"
+
+[dependencies]
+log = "^0.4"
+bytes = "^0.4"
+futures = "^0.1"
+snafu = "^0.5.0"
+
+[dependencies.uuid]
+version = "0.7.4"
+features = ["v4"]
+
+[dependencies.tokio]
+version = "^0.1"
+default-features = false
+features = ["rt-full"]
