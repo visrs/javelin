@@ -9,6 +9,7 @@ use {
         prelude::*,
         net::{TcpListener, TcpStream, tcp::Incoming}
     },
+    javelin_core::BytesStream,
 };
 #[cfg(feature = "tls")]
 use {
@@ -22,7 +23,6 @@ use crate::{
 };
 use super::{
     Peer,
-    BytesStream,
     ClientId,
 };
 

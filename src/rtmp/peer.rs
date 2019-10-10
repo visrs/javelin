@@ -12,6 +12,10 @@ use {
             PeerType,
         },
     },
+    javelin_core::bytes_stream::{
+        self,
+        BytesStream,
+    },
 };
 use crate::{
     config::RtmpConfig as Config,
@@ -23,10 +27,6 @@ use super::{
         self,
         Handler as EventHandler,
         EventResult,
-    },
-    bytes_stream::{
-        self,
-        BytesStream,
     },
     ClientId,
 };
