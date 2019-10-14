@@ -36,12 +36,6 @@ impl Shared {
     }
 
     #[cfg(feature = "hls")]
-    pub fn set_hls_sender(&mut self, sender: hls::server::Sender) {
-        let mut hls_sender = self.hls_sender.write();
-        *hls_sender = Some(sender);
-    }
-
-    #[cfg(feature = "hls")]
     pub fn hls_sender(&self) -> Option<hls::server::Sender> {
         self.hls_sender.read().clone()
     }

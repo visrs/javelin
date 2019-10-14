@@ -54,7 +54,7 @@ fn main() {
         tokio::spawn(session_manager);
 
         #[cfg(feature = "hls")]
-        spawn_hls_server(shared.clone());
+        hls::Server::spawn(config.hls.clone());
 
         spawn_rtmp_server(shared.clone());
 
@@ -65,20 +65,4 @@ fn main() {
 fn spawn_rtmp_server(shared: Shared) {
     let config = shared.config.read().rtmp.clone();
     tokio::spawn(rtmp::Server::new(config, shared.clone()));
-}
-
-#[cfg(feature = "hls")]
-fn spawn_hls_server(mut shared: Shared) {
-    let enabled = {
-        let config = shared.config.read();
-        config.hls.enabled
-    };
-
-    if enabled {
-        let config = shared.config.read().hls.clone();
-        let hls_server = hls::Server::new(config);
-        let hls_sender = hls_server.sender();
-        shared.set_hls_sender(hls_sender);
-        tokio::spawn(hls_server);
-    }
 }

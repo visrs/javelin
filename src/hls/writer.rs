@@ -10,9 +10,9 @@ use {
 use javelin_codec::{self, avc, aac};
 use crate::{
     media::{self, Media},
-    config,
 };
 use super::{
+    config::Config,
     transport_stream::{
         self,
         Buffer as TsBuffer
@@ -53,7 +53,7 @@ pub struct Writer {
 }
 
 impl Writer {
-    pub fn create(app_name: String, receiver: media::Receiver, config: config::HlsConfig, file_cleaner: file_cleaner::Sender) -> Result<Self> {
+    pub fn create(app_name: String, receiver: media::Receiver, config: Config, file_cleaner: file_cleaner::Sender) -> Result<Self> {
         let write_interval = 2000; // milliseconds
         let next_write = write_interval; // milliseconds
 

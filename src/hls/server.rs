@@ -6,9 +6,9 @@ use {
 };
 use crate::{
     media,
-    config::HlsConfig as Config,
 };
 use super::{
+    config::Config,
     writer::Writer,
     file_cleaner,
 };
@@ -48,6 +48,13 @@ impl Server {
             config,
             sender,
             receiver
+        }
+    }
+
+    pub fn spawn(config: Config) {
+        if config.enabled {
+            let server = Self::new(config); // .map_err(|e| error!("{}", e));
+            tokio::spawn(server);
         }
     }
 
