@@ -18,17 +18,21 @@ mod web;
 
 use {
     futures::future::lazy,
-    simplelog::{Config, SimpleLogger, TermLogger, LevelFilter},
+    simplelog::{
+        Config as LogConfig,
+        SimpleLogger, TermLogger, LevelFilter
+    },
     javelin_core::session::{self, SessionBusSender},
 };
 
 use crate::{
+    config::Config,
     shared::Shared,
 };
 
 
 macro_rules! init_logger {
-    [ $kind:ident ] => { $kind::init(LevelFilter::Debug, Config::default()) }
+    [ $kind:ident ] => { $kind::init(LevelFilter::Debug, LogConfig::default()) }
 }
 
 
@@ -37,10 +41,11 @@ fn main() {
         init_logger!(SimpleLogger).unwrap_or_else(|err|
             eprintln!("Failed to initialize logger: {}", err)));
 
+    let config = Config::new();
     let shared = Shared::new();
 
     #[cfg(feature = "web")]
-    spawn_web_server(shared.clone());
+    web::Server::spawn(config.clone(), shared.clone());
 
     tokio::run(lazy(move || {
         let allowed_sessions = shared.config.read().rtmp.permitted_stream_keys.clone();
@@ -75,17 +80,5 @@ fn spawn_hls_server(mut shared: Shared) {
         let hls_sender = hls_server.sender();
         shared.set_hls_sender(hls_sender);
         tokio::spawn(hls_server);
-    }
-}
-
-#[cfg(feature = "web")]
-fn spawn_web_server(shared: Shared) {
-    let enabled = {
-        let config = shared.config.read();
-        config.hls.enabled && config.web.enabled
-    };
-
-    if enabled {
-        web::Server::new(shared).start();
     }
 }

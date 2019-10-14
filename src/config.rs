@@ -17,7 +17,10 @@ use std::{
     io::Read,
     env,
 };
-use crate::args;
+use crate::{
+    args,
+    web::Config as WebConfig,
+};
 
 
 #[derive(Debug, Snafu)]
@@ -125,26 +128,6 @@ impl HlsConfig {
     }
 }
 
-
-#[derive(Debug, Clone)]
-#[cfg(feature = "web")]
-pub struct WebConfig {
-    pub addr: SocketAddr,
-    pub enabled: bool,
-}
-
-#[cfg(feature = "web")]
-impl WebConfig {
-    pub fn new(args: &ArgMatches) -> Self {
-        let enabled = !args.is_present("http_disabled");
-
-        let host = args.value_of("http_bind").expect("BUG: default value for 'http_bind' missing");
-        let port = args.value_of("http_port").expect("BUG: default value for 'http_port' missing");
-        let addr = format!("{}:{}", host, port).parse().expect("Invalid address or port name for web server");
-
-        Self { addr, enabled }
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct RtmpConfig {

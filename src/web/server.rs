@@ -13,7 +13,10 @@ use super::api::{
     api,
     Error as ApiError,
 };
-use crate::Shared;
+use crate::{
+    config::Config,
+    Shared
+};
 
 
 macro_rules! json_error_response {
@@ -26,43 +29,38 @@ macro_rules! json_error_response {
 
 
 pub struct Server {
-    shared: Shared,
+    config: Config,
 }
 
 impl Server {
-    pub fn new(shared: Shared) -> Self {
-        Self { shared }
+    pub fn new(config: Config) -> Self {
+        Self { config }
     }
 
-    pub fn start(&mut self) {
-        let shared = self.shared.clone();
-        thread::spawn(|| server(shared));
+    pub fn spawn(config: Config, shared: Shared) {
+        if config.web.enabled {
+            let server = Self::new(config);
+            thread::spawn(|| start(server, shared));
+        }
     }
 }
 
 
-fn server(shared: Shared) {
-    let addr = {
-        let config = shared.config.read();
-        config.web.addr
-    };
+fn start(server: Server, shared: Shared) {
+    let config = server.config;
 
-    let hls_root = {
-        let config = shared.config.read();
-        config.hls.root_dir.clone()
-    };
-
-    let hls_files = warp::path("hls")
-        .and(warp::fs::dir(hls_root));
-
-    let streams_api = warp::path("api")
+    let routes = warp::path("api")
         .and(api(shared.clone()));
 
-    let routes = hls_files
-        .or(streams_api)
+    #[cfg(feature = "hls")]
+    let routes = routes
+        .or(warp::path("hls")
+            .and(warp::fs::dir(config.hls.root_dir)));
+
+    let routes = routes
         .recover(error_handler);
 
-    warp::serve(routes).run(addr);
+    warp::serve(routes).run(config.web.addr);
 }
 
 fn error_handler(err: Rejection) -> Result<impl Reply, Rejection> {
