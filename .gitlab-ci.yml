@@ -1,5 +1,6 @@
 image: "debian:stretch-slim"
 
+
 stages:
   - prepare
   - build
@@ -9,6 +10,8 @@ stages:
 variables:
   RUSTUP_HOME: "$CI_PROJECT_DIR/.rustup"
   CARGO_HOME: "$CI_PROJECT_DIR/.cargo"
+  RUST_STABLE_VERSION: "1.37.0"
+
 
 .write_cache:
   cache:
@@ -42,50 +45,75 @@ variables:
     - export PATH="$CARGO_HOME/bin:$PATH"
     - rustup default nightly
 
+.source-files: &source-files
+  - "Cargo.toml"
+  - "Cargo.lock"
+  - "src/**/*.rs"
+
+
 ####### Jobs #######
 
-install-rust:
+install:
   extends: .write_cache
   stage: prepare
   script:
-    - apt-get update
-    - apt-get install -y --no-install-recommends ca-certificates curl
-    - curl https://sh.rustup.rs > rustup.sh
-    - sh rustup.sh -y --default-host x86_64-unknown-linux-gnu
+    - apt-get update && apt-get install -y --no-install-recommends ca-certificates curl
+    - curl https://sh.rustup.rs | sh -s -- -y --default-host x86_64-unknown-linux-gnu
     - export PATH="$CARGO_HOME/bin:$PATH"
-    - rustup install ${RUST_STABLE_VERSION:-stable}
-    - rustup install nightly
+    - rustup install "$RUST_STABLE_VERSION" nightly
     - rustup component add clippy
 
-build-stable:
+
+build:stable:default-features:
   extends: .toolchain-stable
   stage: build
   script:
-    - cargo build --no-default-features
-    - cargo build --no-default-features --features "tls"
-    - cargo build --no-default-features --features "hls"
-    - cargo build --no-default-features --features "web"
-    - cargo build
-    - cargo test --tests
+    - cargo build --quiet
   only:
-    changes:
-      - Cargo.toml
-      - Cargo.lock
-      - src/**/*.rs
+    changes: *source-files
 
-build-nightly:
+build:stable:no-default-features:
+  extends: .toolchain-stable
+  stage: build
+  script:
+    - cargo build --quiet --no-default-features
+  only:
+    changes: *source-files
+
+build:stable:web-only:
+  extends: .toolchain-stable
+  stage: build
+  script:
+    - cargo build --quiet --no-default-features --features "web"
+  only:
+    changes: *source-files
+
+build:stable:hls-only:
+  extends: .toolchain-stable
+  stage: build
+  script:
+    - cargo build --quiet --no-default-features --features "hls"
+  only:
+    changes: *source-files
+
+build:stable:tls-only:
+  extends: .toolchain-stable
+  stage: build
+  script:
+    - cargo build --quiet --no-default-features --features "tls"
+  only:
+    changes: *source-files
+
+build:nightly:default-features:
   extends: .toolchain-nightly
   stage: build
   script:
-    - cargo build
-    - cargo test --tests
+    - cargo build --quiet
   only:
-    changes:
-      - Cargo.toml
-      - Cargo.lock
-      - src/**/*.rs
+    changes: *source-files
 
-test-clippy:
+
+test:stable:clippy:
   extends: .toolchain-stable
   stage: test
   allow_failure: true
@@ -95,23 +123,19 @@ test-clippy:
     changes:
       - src/**/*.rs
 
-deploy-crates-io:
+test:stable:all:
+  extends: .toolchain-stable
+  stage: test
+  script:
+    - cargo test --quiet --tests --all
+  only:
+    changes: *source-files
+
+
+deploy:crates-io:
   extends: .toolchain-stable
   stage: publish
   script:
     - ./scripts/publish.sh --token $CRATES_IO_API_TOKEN
   only:
     - tags@valeth/javelin
-
-# deploy-docker-image:
-#   allow_failure: true
-#   image: docker:latest
-#   stage: publish
-#   before_script:
-#     - apk add --no-cache ruby
-#     - gem install --no-document childprocess toml
-#     - docker login -u "$GITLAB_USERNAME" -p "$GITLAB_ACCESS_TOKEN" registry.gitlab.com
-#   script:
-#     - ./docker.rb
-#   only:
-#     - tags@valeth/javelin
