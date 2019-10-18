@@ -9,21 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- The `permit-stream-key` argument not takes a key-value pair like
-  `appname:streamkey` instead of just `streamkey`.
+- The `permit-stream-key` got renamed to `rtmp-permit-stream` and requires a key-value pair like `appname:streamkey`.
 - RTMP and RTMPS can now be active simultaneously.
 
 ### Fixed
-- Stream keys are not bound to one single application
+- Stream keys are now bound to one single application.
 
----
+
+## [0.3.7]
+### Yanked
+- Socket timeout and RTMP session cleanup implementations caused issues.
+
 
 ## [0.3.6]
 
 ### Added
 - Permitted stream keys can now be set via configuration file.
 
----
 
 ## [0.3.5]
 
@@ -31,7 +33,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Composition time is now included in PES presentation timestamp.
 - PES now also has a decoding timestamp set.
 
----
 
 ## [0.3.4]
 
@@ -44,7 +45,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Moved codec related code into sub-crate.
 
----
 
 ## [0.3.3]
 
@@ -52,7 +52,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HLS directory will now be completely cleared only on startup.
 - The "web" feature now includes the "hls" feature set.
 
----
 
 ## [0.3.2]
 
@@ -64,21 +63,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TLS support is disabled by default.
 - HLS directory is now cleared every time on stream publish start.
 
----
 
 ## [0.3.1]
 
 ### Changed
 - Just some minor tweaks.
 
----
 
 ## [0.3.0]
 
 ### Added
 - Optional support for HLS streaming output.
 
----
 
 ## [0.2.3]
 
@@ -88,35 +84,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Help text should now be always up-to-date with `Cargo.toml`.
 
----
 
 ## [0.2.2]
 
 ### Fixed
 - Just minor manifest formatting fixes, nothing important.
 
----
 
 ## [0.2.1]
 
 ### Fixed
 - No longer requires a password if running with `--no-tls` flag.
 
----
 
 ## [0.2.0]
 
 ### Added
 - Optional TLS support is now available.
 
----
 
 ## [0.1.1]
 
 ### Fixed
 - Publishing clients should no longer linger forever.
 
----
 
 ## [0.1.0]
 
@@ -128,6 +119,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- links -->
 
 [Unreleased]: https://gitlab.com/valeth/javelin/tree/develop
+[0.3.7]: https://gitlab.com/valeth/javelin/tree/0.3.7
 [0.3.6]: https://gitlab.com/valeth/javelin/tree/0.3.6
 [0.3.5]: https://gitlab.com/valeth/javelin/tree/0.3.5
 [0.3.4]: https://gitlab.com/valeth/javelin/tree/0.3.4

@@ -1,14 +1,14 @@
-[![javelin][project_banner]][website_url]
+# Javelin
 
-# Javelin RTMP Server
+A simple video live streaming server.
 
-> Please be aware that this software is still under development.
-> There could be breaking changes before version 1.0.
-
-Streaming server written in Rust.
+> This software is still under heavy development.
+>
+> For all versions under 1.0.0, breaking changes should only occur 
+> on minor release increments, patch releases are backwards compatible.
 
 Supported sources:
-- RTMP
+- RTMP (H.264 + AAC)
 
 Supported outputs:
 - RTMP
@@ -16,28 +16,17 @@ Supported outputs:
 
 ## How to install and run
 
-### Via Cargo
-
 ```sh
 cargo install javelin
 # Make sure your $CARGO_HOME/bin is in your $PATH
-javelin --permit-stream-key="username:mysecretstreamkey"
+javelin --rtmp-permit-stream="username:mysecretstreamkey"
 ```
 
-### Via Docker
-
-```sh
-docker pull registry.gitlab.com/valeth/javelin:latest
-docker run --tty -p 1935:1935 \
-    registry.gitlab.com/valeth/javelin:latest \
-    --hls-root=/tmp/streamout \
-    --permit-stream-key="username:123456"
-```
-
-> Try `javelin --help` for more command line options.
+Check out the [Wiki][wiki_installation] for more info about other possible installation methods.
 
 
 <!-- links -->
 
 [project_banner]: https://files.valeth.info/javelin_banner.png
-[website_url]: https://valeth.info
+[website_url]: https://javelin.rs
+[wiki_installation]: https://gitlab.com/valeth/javelin/wikis/installation
